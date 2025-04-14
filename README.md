@@ -41,8 +41,6 @@ POWERPORTAL_BASEURL=https://your-power-portal-url.com
 AUTH_PROVIDER=https://auth-provider-url.com/authorize
 LOGIN_URL=/Account/Login/ExternalLogin
 RETURN_URL=/api/v1/auth/verify
-# Server configuration
-PORT=5000
 ```
 
 Note: Username and password are no longer required in the .env file. Users will enter their credentials directly in the browser when prompted during authentication.
@@ -62,7 +60,7 @@ npm run dev
 ```
 
 This will start:
-- The proxy server on http://localhost:5000 (or the port specified in your .env file)
+- The proxy server on http://localhost:5000
 - The dashboard on http://localhost:5001
 - A browser window will automatically open for both the authentication process and the dashboard
 
