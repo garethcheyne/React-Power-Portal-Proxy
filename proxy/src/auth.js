@@ -6,6 +6,11 @@ const fs = require('fs');
 const axios = require('axios');
 const https = require('https');
 
+// Parse command-line arguments
+const args = process.argv.slice(2);
+const shouldOpenBrowser = args.includes('--open-browser');
+const shouldNotPersist = args.includes('--no-persist');
+
 // Store active browser session globally
 let activeBrowser = null;
 let activeContext = null;
@@ -22,8 +27,8 @@ let persistentAuthData = {
 // Path for storing session data
 const SESSION_FILE_PATH = path.join(process.cwd(), '.session-data.json');
 
-// Load environment variables with more explicit path
-const envPath = path.resolve(process.cwd(), '.env');
+// Load environment variables with more explicit path - pointing to root directory
+const envPath = path.resolve(path.join(__dirname, '..', '..', '.env'));
 console.log(chalk.yellow.bold(`📄 Loading .env file from: ${envPath}`));
 
 // Check if .env file exists
@@ -57,6 +62,12 @@ const log = {
  * @param {Object} data - Session data to persist
  */
 function saveSessionData(data) {
+    // Skip saving if persistence is disabled
+    if (shouldNotPersist) {
+        log.info('Session persistence is disabled - not saving session data');
+        return;
+    }
+    
     try {
         // Only store what we need for session persistence
         const sessionData = {
@@ -78,6 +89,12 @@ function saveSessionData(data) {
  * @returns {Object|null} - Loaded session data or null if not found or expired
  */
 function loadSessionData() {
+    // Skip loading if persistence is disabled
+    if (shouldNotPersist) {
+        log.info('Session persistence is disabled - not loading previous session data');
+        return null;
+    }
+    
     try {
         if (fs.existsSync(SESSION_FILE_PATH)) {
             const data = JSON.parse(fs.readFileSync(SESSION_FILE_PATH, 'utf8'));
@@ -217,8 +234,11 @@ async function verifySession(sessionData) {
 async function authenticate(forceBrowser = false) {
     log.info(chalk.bold('Starting authentication process...'));
     
-    // Try to use cached session if available
-    if (!forceBrowser) {
+    // Always force browser if the flag is set
+    forceBrowser = forceBrowser || shouldOpenBrowser;
+    
+    // Try to use cached session if available (unless forced browser or persistence disabled)
+    if (!forceBrowser && !shouldNotPersist) {
         // First check our in-memory cache
         if (persistentAuthData.cookies) {
             log.info('Using in-memory cached session');
@@ -241,17 +261,14 @@ async function authenticate(forceBrowser = false) {
         }
         
         log.info('No valid session found, proceeding with browser authentication');
+    } else if (shouldNotPersist) {
+        log.info('Session persistence is disabled - proceeding with browser authentication');
     } else {
         log.info('Forced browser authentication requested');
     }
 
-    // Verify username is available
-    if (!process.env.POWERPORTAL_USERNAME) {
-        log.error('Missing username in environment variables!');
-        throw new Error('Username not configured properly');
-    }
-
-    log.info(`Using username: ${process.env.POWERPORTAL_USERNAME}`);
+    // No need to verify username - user will enter credentials in browser
+    log.info('User will enter credentials directly in browser');
     
     // Launch Edge browser instead of default Chromium
     log.browser('Attempting to launch browser...');
@@ -314,24 +331,22 @@ async function authenticate(forceBrowser = false) {
         // Navigate to the login page
         await activePage.goto(loginUrl);
 
-        // Wait for the login form to be visible and enter username only
+        // Wait for the login form to be visible
         log.auth('FORM', 'Looking for email input field');
         await activePage.waitForSelector('input[type="email"]');
 
-        log.auth('FORM', `Auto-filling username: ${process.env.POWERPORTAL_USERNAME}`);
-        await activePage.fill('input[type="email"]', process.env.POWERPORTAL_USERNAME);
-
+        // No auto-filling - user will enter username in browser
         log.auth('FORM', 'Looking for password input field');
         await activePage.waitForSelector('input[type="password"]');
 
         // Clear instructions for the user
-        log.instruction('Please enter your password in the browser window and click Sign In');
+        log.instruction('Please enter your username and password in the browser window and click Sign In');
         log.instruction('The proxy server is waiting for you to complete authentication...');
 
         // Wait for redirect to the return URL - this happens after user manually logs in
         log.auth('REDIRECT', `Waiting for redirect to URL containing: ${process.env.RETURN_URL}`);
         await activePage.waitForURL(url => url.pathname.includes(process.env.RETURN_URL), {
-            timeout: 120000  // Extended timeout (2 minutes) to give user time to enter password
+            timeout: 120000  // Extended timeout (2 minutes) to give user time to enter credentials
         });
 
         // Check if authentication was successful
@@ -429,6 +444,9 @@ async function authenticate(forceBrowser = false) {
         // Save session to disk
         saveSessionData(persistentAuthData);
 
+        // Inject success modal into the page
+        await injectSuccessModal(activePage);
+
         // Let user know they can close the browser
         log.instruction('Authentication complete - you can close the browser if desired');
         log.instruction('The session will stay active even after the browser is closed');
@@ -447,6 +465,105 @@ async function authenticate(forceBrowser = false) {
         log.warn('Browser session remains open despite error');
         throw error;
     }
+}
+
+/**
+ * Injects a success modal into the page that informs the user they can close the browser
+ * @param {Page} page - The Playwright page object 
+ */
+async function injectSuccessModal(page) {
+  try {
+    await page.evaluate(() => {
+      // Create modal elements
+      const modalContainer = document.createElement('div');
+      modalContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      `;
+      
+      const modalContent = document.createElement('div');
+      modalContent.style.cssText = `
+        background-color: white;
+        border-radius: 8px;
+        padding: 24px;
+        width: 400px;
+        max-width: 90%;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        text-align: center;
+      `;
+
+      const icon = document.createElement('div');
+      icon.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+      `;
+      
+      const title = document.createElement('h2');
+      title.textContent = 'Authentication Successful!';
+      title.style.cssText = 'margin: 16px 0; color: #111827; font-size: 1.5rem;';
+      
+      const message = document.createElement('p');
+      message.textContent = 'You have successfully authenticated. You can close this browser window if you want.';
+      message.style.cssText = 'margin: 0 0 24px 0; color: #4B5563; font-size: 1rem; line-height: 1.5;';
+      
+      const closeButton = document.createElement('button');
+      closeButton.textContent = 'Close';
+      closeButton.style.cssText = `
+        background-color: #10B981;
+        color: white;
+        border: none;
+        padding: 8px 24px;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      `;
+      
+      closeButton.addEventListener('mouseover', () => {
+        closeButton.style.backgroundColor = '#059669';
+      });
+      
+      closeButton.addEventListener('mouseout', () => {
+        closeButton.style.backgroundColor = '#10B981';
+      });
+      
+      closeButton.addEventListener('click', () => {
+        modalContainer.style.opacity = '0';
+        setTimeout(() => modalContainer.remove(), 300);
+      });
+      
+      // Assemble modal
+      modalContent.appendChild(icon);
+      modalContent.appendChild(title);
+      modalContent.appendChild(message);
+      modalContent.appendChild(closeButton);
+      modalContainer.appendChild(modalContent);
+      
+      // Add modal to page
+      document.body.appendChild(modalContainer);
+      
+      // Add fade-in animation
+      modalContainer.style.opacity = '0';
+      setTimeout(() => { modalContainer.style.opacity = '1'; }, 10);
+      modalContainer.style.transition = 'opacity 0.3s ease';
+    });
+    
+    console.log('Success modal injected into page');
+  } catch (error) {
+    console.error('Failed to inject success modal:', error);
+  }
 }
 
 // Add a function to refresh session if needed

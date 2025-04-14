@@ -4,17 +4,31 @@ const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const zlib = require('zlib');
+const fs = require('fs');
+const path = require('path');
 // Add rate limiter import (requires: npm install express-rate-limit)
 const rateLimit = require('express-rate-limit');
 const { authenticate, callWhoamiAPI, closeBrowserSession, refreshSession } = require('./auth');
 const db = require('./db');
 
+// Delete session data file at startup
+const SESSION_FILE_PATH = path.join(process.cwd(), '.session-data.json');
+if (fs.existsSync(SESSION_FILE_PATH)) {
+    try {
+        fs.unlinkSync(SESSION_FILE_PATH);
+        console.log(`[INFO] ${new Date().toISOString()} - Removed existing session data file`);
+    } catch (error) {
+        console.error(`[ERROR] ${new Date().toISOString()} - Failed to remove session data file: ${error.message}`);
+    }
+}
+
 // Load environment variables
 dotenv.config();
+dotenv.config({ path: path.resolve(path.join(__dirname, '..', '..', '.env')) });
 
 // Validate required environment variables
 function validateEnv() {
-    const required = ['POWERPORTAL_BASEURL', 'POWERPORTAL_USERNAME'];
+    const required = ['POWERPORTAL_BASEURL']; // Removed username requirement
     const missing = required.filter(key => !process.env[key]);
     
     if (missing.length > 0) {
@@ -23,11 +37,8 @@ function validateEnv() {
         process.exit(1);
     }
     
-    // Password is optional - we'll prompt for it if needed
-    if (!process.env.POWERPORTAL_PASSWORD) {
-        console.warn('Warning: POWERPORTAL_PASSWORD not set in environment variables.');
-        console.warn('You will need to enter your password manually in the browser.');
-    }
+    // Username and password are now optional - user will enter in browser
+    console.log('User credentials will be entered directly in the browser.');
     
     // Validate base URL format
     try {
@@ -109,6 +120,19 @@ const log = {
         console.log(`[RESPONSE] ${new Date().toISOString()} - ${req.method} ${req.path} - ${statusColor}${res.statusCode}\x1b[0m - ${message}`);
     }
 };
+
+// Parse command-line arguments
+const args = process.argv.slice(2);
+const shouldOpenBrowser = args.includes('--open-browser');
+const shouldNotPersist = args.includes('--no-persist');
+
+if (shouldNotPersist) {
+    log.info('Session persistence disabled - session data will not be saved');
+}
+
+if (shouldOpenBrowser) {
+    log.info('Browser will open automatically during startup');
+}
 
 /**
  * Setup and configure the proxy application

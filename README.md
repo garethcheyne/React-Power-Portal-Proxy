@@ -19,49 +19,52 @@ This project consists of two main components:
 
 ## Setup
 
-1. Make sure you have Node.js installed (v14 or newer recommended)
-2. Install dependencies for both components:
+1. Make sure you have Node.js installed (v16 or newer recommended)
+2. Install dependencies:
    ```
-   # Install root dependencies (including concurrently)
+   # Install all dependencies with a single command from the root directory
    npm install
-   
-   # Install proxy server dependencies
-   cd proxy && npm install
-   
-   # Install dashboard dependencies
-   cd dashboard && npm install
    ```
-3. Configure your `.env` file in the proxy directory with your credentials and settings (a template is provided)
+3. Configure your `.env` file in the root directory (a template is provided below)
+4. Build the dashboard for production:
+   ```
+   npm run build
+   ```
 
 ## Environment Variables
 
-The following environment variables need to be set in your `proxy/.env` file:
+Create a `.env` file in the root directory with the following settings:
 
-- `POWERPORTAL_BASEURL`: Base URL of the Power Portal
-- `AUTH_PROVIDER`: Authentication provider URL
-- `LOGIN_URL`: Login endpoint URL
-- `RETURN_URL`: URL to return to after authentication
-- `AUTH_USERNAME`: Your username/email
-- `AUTH_PASSWORD`: Your password
-- `PORT`: Port for the proxy server (default: 3000)
+```
+# Environment variables for the application
+POWERPORTAL_BASEURL=https://your-power-portal-url.com
+AUTH_PROVIDER=https://auth-provider-url.com/authorize
+LOGIN_URL=/Account/Login/ExternalLogin
+RETURN_URL=/api/v1/auth/verify
+# Server configuration
+PORT=5000
+```
+
+Note: Username and password are no longer required in the .env file. Users will enter their credentials directly in the browser when prompted during authentication.
 
 ## Usage
 
-Start both the proxy service and dashboard in development mode:
-
-```
-npm run dev
-```
-
-For production:
+Start both the proxy service and dashboard in production mode:
 
 ```
 npm start
 ```
 
+For development:
+
+```
+npm run dev
+```
+
 This will start:
 - The proxy server on http://localhost:5000 (or the port specified in your .env file)
 - The dashboard on http://localhost:5001
+- A browser window will automatically open for both the authentication process and the dashboard
 
 You can also run each component separately:
 
@@ -81,11 +84,12 @@ npm run start-dashboard
 
 ## How it Works
 
-1. When you start the server, it will use Playwright to open Microsoft Edge
-2. It will navigate to the login page and authenticate with your credentials
+1. When you start the server, it will use Playwright to open a browser window (Microsoft Edge or Chromium)
+2. It will navigate to the login page where you need to enter your credentials
 3. After successful authentication, it captures the cookies and headers
-4. Subsequent requests are proxied to the target application with the authenticated session
-5. The dashboard displays real-time information about API requests and responses
+4. A success message appears letting you know that you can close the browser if desired
+5. Subsequent requests are proxied to the target application with the authenticated session
+6. The dashboard displays real-time information about API requests and responses
 
 ## Screenshots
 
@@ -95,7 +99,13 @@ The screenshot above shows the application's dashboard interface, which displays
 
 ## Security Note
 
-Your credentials are stored in the `.env` file. Make sure to:
-- Never commit the `.env` file to source control
-- Keep your credentials secure
-- Consider using environment variables in production environments instead of a .env file
+Your credentials are entered directly in the browser and are not stored in configuration files. The session data is stored temporarily for the duration of the proxy service and can be configured not to persist between restarts by using the appropriate command-line flags.
+
+## Commands Reference
+
+| Command | Description |
+|---------|-------------|
+| `npm install` | Install all dependencies for both proxy and dashboard |
+| `npm run build` | Build the dashboard for production |
+| `npm start` | Start both proxy and dashboard in production mode |
+| `npm run dev` | Start both proxy and dashboard in development mode |

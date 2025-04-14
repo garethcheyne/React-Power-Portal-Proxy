@@ -68,6 +68,26 @@ export default function DashboardClient() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [timeRange, setTimeRange] = useState<string>('24h');
 
+  // Add state variable for portal URL
+  const [portalUrl, setPortalUrl] = useState<string | null>(null);
+
+  // Fetch portal URL from our API endpoint
+  useEffect(() => {
+    async function fetchPortalUrl() {
+      try {
+        const response = await fetch('/api/portal-url');
+        const data = await response.json();
+        if (data.url) {
+          setPortalUrl(data.url);
+        }
+      } catch (error) {
+        console.error('Error fetching portal URL:', error);
+      }
+    }
+    
+    fetchPortalUrl();
+  }, []);
+
   // Open the request inspector when clicking a request
   const handleRequestClick = (request: LogEntry) => {
     setSelectedRequest(request as RequestLogEntry);
@@ -280,11 +300,11 @@ export default function DashboardClient() {
             {loading ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Link
-            href="http://localhost:3000"
+            href={portalUrl || "#"}
             target="_blank"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
           >
-            Open Proxy
+            Open Portal
           </Link>
         </div>
       </header>
