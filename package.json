@@ -1,0 +1,21 @@
+{
+  "name": "react-power-portal-proxy",
+  "version": "1.0.0",
+  "description": "A lightweight proxy service for Microsoft Power Portal development that handles authentication to Harvey Norman Commercial NZ using Playwright.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "concurrently \"npm:start-proxy\" \"npm:start-dashboard\"",
+    "dev": "concurrently \"npm:dev-proxy\" \"npm:dev-dashboard\"",
+    "start-proxy": "cd proxy && npm run start",
+    "start-dashboard": "cd dashboard && npm run start",
+    "dev-proxy": "cd proxy && npm run dev",
+    "dev-dashboard": "cd dashboard && npm run dev"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
