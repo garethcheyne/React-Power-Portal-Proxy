@@ -227,7 +227,7 @@ async function verifySession(sessionData) {
 }
 
 /**
- * Authenticate with Harvey Norman Commercial using Playwright with Edge browser
+ * Authenticate with Power Portal using Playwright with Edge browser
  * @param {boolean} forceBrowser - Whether to force browser authentication even if session exists
  * @returns {Promise<{cookies: Array, headers: Object, userData: Object}>} Authentication data
  */
@@ -448,7 +448,7 @@ async function authenticate(forceBrowser = false) {
         await injectSuccessModal(activePage);
 
         // Let user know they can close the browser
-        log.instruction('Authentication complete - you can close the browser if desired');
+        log.instruction('Authentication complete - you can now access the dashboard');
         log.instruction('The session will stay active even after the browser is closed');
         
         return {
@@ -468,7 +468,7 @@ async function authenticate(forceBrowser = false) {
 }
 
 /**
- * Injects a success modal into the page that informs the user they can close the browser
+ * Injects a success modal into the page that informs the user they can open the dashboard
  * @param {Page} page - The Playwright page object 
  */
 async function injectSuccessModal(page) {
@@ -514,12 +514,12 @@ async function injectSuccessModal(page) {
       title.style.cssText = 'margin: 16px 0; color: #111827; font-size: 1.5rem;';
       
       const message = document.createElement('p');
-      message.textContent = 'You have successfully authenticated. You can close this browser window if you want.';
+      message.textContent = 'You have successfully authenticated. You can now access the dashboard or close this browser window.';
       message.style.cssText = 'margin: 0 0 24px 0; color: #4B5563; font-size: 1rem; line-height: 1.5;';
       
-      const closeButton = document.createElement('button');
-      closeButton.textContent = 'Close';
-      closeButton.style.cssText = `
+      const dashboardButton = document.createElement('button');
+      dashboardButton.textContent = 'Open Dashboard';
+      dashboardButton.style.cssText = `
         background-color: #10B981;
         color: white;
         border: none;
@@ -529,14 +529,43 @@ async function injectSuccessModal(page) {
         font-weight: 500;
         cursor: pointer;
         transition: background-color 0.2s;
+        margin-right: 12px;
+      `;
+      
+      dashboardButton.addEventListener('mouseover', () => {
+        dashboardButton.style.backgroundColor = '#059669';
+      });
+      
+      dashboardButton.addEventListener('mouseout', () => {
+        dashboardButton.style.backgroundColor = '#10B981';
+      });
+      
+      dashboardButton.addEventListener('click', () => {
+        window.open('http://localhost:5001', '_blank');
+        modalContainer.style.opacity = '0';
+        setTimeout(() => modalContainer.remove(), 300);
+      });
+      
+      const closeButton = document.createElement('button');
+      closeButton.textContent = 'Close';
+      closeButton.style.cssText = `
+        background-color: transparent;
+        color: #6B7280;
+        border: 1px solid #D1D5DB;
+        padding: 8px 24px;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
       `;
       
       closeButton.addEventListener('mouseover', () => {
-        closeButton.style.backgroundColor = '#059669';
+        closeButton.style.backgroundColor = '#F3F4F6';
       });
       
       closeButton.addEventListener('mouseout', () => {
-        closeButton.style.backgroundColor = '#10B981';
+        closeButton.style.backgroundColor = 'transparent';
       });
       
       closeButton.addEventListener('click', () => {
@@ -544,11 +573,21 @@ async function injectSuccessModal(page) {
         setTimeout(() => modalContainer.remove(), 300);
       });
       
+      // Create button container for layout
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.cssText = `
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+      `;
+      
       // Assemble modal
+      buttonContainer.appendChild(dashboardButton);
+      buttonContainer.appendChild(closeButton);
       modalContent.appendChild(icon);
       modalContent.appendChild(title);
       modalContent.appendChild(message);
-      modalContent.appendChild(closeButton);
+      modalContent.appendChild(buttonContainer);
       modalContainer.appendChild(modalContent);
       
       // Add modal to page
@@ -560,7 +599,7 @@ async function injectSuccessModal(page) {
       modalContainer.style.transition = 'opacity 0.3s ease';
     });
     
-    console.log('Success modal injected into page');
+    console.log('Success modal with dashboard link injected into page');
   } catch (error) {
     console.error('Failed to inject success modal:', error);
   }

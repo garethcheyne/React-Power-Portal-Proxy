@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "concurrently \"npm:start-proxy\" \"npm:start-dashboard-open\"",
+    "start": "concurrently \"npm:start-proxy\" \"npm:start-dashboard\"",
+    "start-with-dashboard": "concurrently \"npm:start-proxy\" \"npm:start-dashboard-open\"",
     "dev": "concurrently \"npm:dev-proxy\" \"npm:dev-dashboard\"",
     "start-proxy": "cd proxy && npm run start:browser",
     "start-dashboard": "cd dashboard && npm run start",
@@ -17,7 +18,7 @@
     "install-dashboard": "cd dashboard && npm install",
     "build": "npm run build-dashboard",
     "build-dashboard": "cd dashboard && npm run build",
-    "postinstall": "echo \"Installation complete! Run 'npm start' to start both the proxy and dashboard.\""
+    "postinstall": "echo \"Installation complete! Run 'npm start' to start the proxy.\""
   },
   "keywords": [],
   "author": "",

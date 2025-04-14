@@ -1,0 +1,61 @@
+{% if user %}
+    {% assign CurrentTime = now | date: "yyyy-MM-ddTHH:mm:ss" %}
+    {% assign SiteCache = '<condition attribute="createdon" operator="ne" value="' | append: CurrentTime | append: '" />' %}
+    {% assign accountid = user.parentcustomerid %}
+    {% fetchxml customer %}
+<fetch>
+    <entity name="contact">
+        <attribute name="parentcustomerid" />
+        <filter type='and'>
+            {{SiteCache}}
+            <condition attribute="contactid" operator="eq" value="{{user.id}}" />
+        </filter>
+        <link-entity name="account" from="accountid" to="parentcustomerid" alias="account">
+            <attribute name="accountid" />
+            <attribute name="name" />
+            <attribute name='defaultpricelevelid' />"
+            <attribute name="modifiedon" />
+
+        </link-entity>
+    </entity>
+</fetch>
+    {% endfetchxml %}
+{
+    "status": "OK",
+    "statuscode": 200,
+    "result":
+        {
+            "id": "{{ user.id }}",
+            "firstname": "{{ user.firstname | default: ""}}",
+            "lastname": "{{ user.lastname | default: ""}}",
+            "fullname": "{{ user.fullname | default: ""}}",
+            "email": "{{ user.emailaddress1 | default: ""}}",
+            "mainphone": "{{ user.telephone1 | default: ""}}",
+            "mobile": "{{ user.mobilephone | default: ""}}",
+            "avartar":"{{ user.basic_badges_url | default: ""}}",
+            "rolls": [{% for role in user.roles %}"{{role}}"{% unless forloop.last %},{% endunless %}{% endfor %}],
+            "lastmodifiedon":"{{ user.modifiedon | date: 'yyyy-MM-ddTHH:mm:ss-UTC' | default: ""}}",
+            {% if accountid %}
+            "account": {
+                "accountid": "{{ customer.results.entities[0]["account.accountid"] | default: ""}}",
+                "companyname": "{{ customer.results.entities[0]["account.name"] | default: ""}}",
+                "pricelistid": "{{ customer.results.entities[0]["account.defaultpricelevelid"]["id"]| default: ""}}",
+                "lastmodifiedon": "{{ customer.results.entities[0]["account.modifiedon"] | date: 'yyyy-MM-ddTHH:mm:ss-UTC' | default: ""}}"
+            }
+            {% else %}
+                "account": {
+                "accountid": "",
+                "companyname": "",
+                "pricelistid": "",
+                "lastmodifiedon": ""
+            }
+            {% endif %}
+         }
+}
+{% else %}
+{
+    "status": "Unauthorized",
+    "statuscode": 401,
+    "result":{}
+}
+{% endif %}

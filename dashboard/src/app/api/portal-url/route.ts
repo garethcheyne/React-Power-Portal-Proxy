@@ -32,7 +32,7 @@ export async function GET() {
         if (!envConfig || !envConfig.POWERPORTAL_BASEURL) {
             console.log('Using hardcoded portal URL as fallback');
             return NextResponse.json({ 
-                url: 'https://www.harveynormancommercial.nz',
+                url: 'https://www.powerportal.example.com',
                 source: 'hardcoded' 
             });
         }
@@ -46,7 +46,7 @@ export async function GET() {
         console.error('Error fetching portal URL:', error);
         // Provide a hardcoded fallback on error
         return NextResponse.json({ 
-            url: 'https://www.harveynormancommercial.nz',
+            url: 'https://www.powerportal.example.com',
             source: 'error-fallback'
         });
     }
