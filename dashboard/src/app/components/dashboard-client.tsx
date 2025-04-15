@@ -13,6 +13,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { RequestInspectorDialog, RequestLogEntry } from './request-inspector-dialog';
 import { CopyIcon } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type LogEntry = {
   id: string;
@@ -52,9 +54,12 @@ type SummaryData = {
   lastRequest: string | null;
 };
 
+
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [summary, setSummary] = useState<SummaryData | null>(null);
+
+  
+    const [summary, setSummary] = useState<SummaryData | null>(null);
   const [recentLogs, setRecentLogs] = useState<LogEntry[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +81,9 @@ export default function DashboardClient() {
   // Add state for shutdown status
   const [isShuttingDown, setIsShuttingDown] = useState(false);
 
+  // Add state for documentation content
+  const [documentationContent, setDocumentationContent] = useState<string>('');
+
   // Fetch portal URL from our API endpoint
   useEffect(() => {
     async function fetchPortalUrl() {
@@ -91,6 +99,21 @@ export default function DashboardClient() {
     }
 
     fetchPortalUrl();
+  }, []);
+
+  // Fetch documentation content
+  useEffect(() => {
+    async function fetchDocumentationContent() {
+      try {
+        const response = await fetch('/documentation/liquid-json-gui.md');
+        const text = await response.text();
+        setDocumentationContent(text);
+      } catch (error) {
+        console.error('Error fetching documentation content:', error);
+      }
+    }
+
+    fetchDocumentationContent();
   }, []);
 
   // Open the request inspector when clicking a request
@@ -315,7 +338,7 @@ export default function DashboardClient() {
   const uniqueStatusCodes = Array.from(new Set(recentLogs.map(log => log.response.statusCode)));
 
   return (
-    <main className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-900">
+    <main className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-900 overflow-auto">
       <header className="flex items-center justify-between p-6 pb-4 border-b dark:border-neutral-800">
         <div className="flex items-center gap-4">
           <Image
@@ -380,7 +403,7 @@ export default function DashboardClient() {
         )}
       </div>
 
-      <div className="px-6 py-4">
+      <div className="px-6 py-4 overflow-auto flex-grow">
         <Tabs
           defaultValue="overview"
           className="space-y-4 flex-1 w-full max-w-none"
@@ -887,8 +910,57 @@ export default function DashboardClient() {
                 <CardTitle>Using Liquid in Power Portals to Generate JSON</CardTitle>
                 <CardDescription>A guide to creating API-like endpoints in Power Pages portals using Liquid templates</CardDescription>
               </CardHeader>
-              <CardContent className="prose dark:prose-invert max-w-none space-y-6 overflow-auto max-h-[75vh]">
-
+              <CardContent className="prose dark:prose-invert max-w-none overflow-auto max-h-[65vh]">
+                {documentationContent ? (
+                  <div className="space-y-6">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        pre: ({ node, ...props }) => (
+                          <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-md overflow-auto text-sm my-4">
+                            <pre {...props} />
+                          </div>
+                        ),
+                        code: ({ node, className, children, ...props }) => (
+                          <code className={`${className} font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-sm`} {...props}>
+                            {children}
+                          </code>
+                        ),
+                        a: ({ node, ...props }) => (
+                          <a className="text-primary hover:underline" target="_blank" rel="noopener noreferrer" {...props} />
+                        ),
+                        h1: ({ node, ...props }) => (
+                          <h1 className="text-3xl font-bold mt-8 mb-4" {...props} />
+                        ),
+                        h2: ({ node, ...props }) => (
+                          <h2 className="text-2xl font-bold mt-8 mb-4" {...props} />
+                        ),
+                        h3: ({ node, ...props }) => (
+                          <h3 className="text-xl font-bold mt-6 mb-3" {...props} />
+                        ),
+                        ul: ({ node, ...props }) => (
+                          <ul className="list-disc pl-6 space-y-1 my-4" {...props} />
+                        ),
+                        ol: ({ node, ...props }) => (
+                          <ol className="list-decimal pl-6 space-y-1 my-4" {...props} />
+                        ),
+                        p: ({ node, ...props }) => (
+                          <p className="mb-4 leading-relaxed" {...props} />
+                        ),
+                        li: ({ node, ...props }) => (
+                          <li className="mb-1" {...props} />
+                        ),
+                      }}
+                    >
+                      {documentationContent}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="flex justify-center items-center h-64">
+                    <div className="text-neutral-500">Loading documentation...</div>
+                  </div>
+                )}
+                <div className="h-4"></div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -903,7 +975,7 @@ export default function DashboardClient() {
       />
 
       {/* Footer with Copilot attribution */}
-      <footer className="mt-auto pt-8 pb-2 text-center border-t dark:border-neutral-800 text-sm text-neutral-500">
+      <footer className="pt-8 pb-2 text-center border-t dark:border-neutral-800 text-sm text-neutral-500">
         <div className="flex items-center justify-center gap-2">
           <span>Made with GitHub Copilot</span>
           <span className="text-xs">(Claude 3.7)</span>

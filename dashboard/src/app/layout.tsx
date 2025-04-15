@@ -14,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark h-full w-full">
       <body
-        className="antialiased h-full w-full overflow-hidden m-0 p-0"
+        className="antialiased h-full w-full m-0 p-0"
       >
         {children}
       </body>
