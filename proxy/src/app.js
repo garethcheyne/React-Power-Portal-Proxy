@@ -186,6 +186,33 @@ function setupProxyApp(app) {
         }
     });
 
+    // Add a shutdown endpoint
+    app.post('/api/shutdown', (req, res) => {
+        log.info('Received shutdown request from dashboard');
+        res.json({ success: true, message: 'Shutdown initiated' });
+        
+        // Send response before shutting down
+        res.on('finish', () => {
+            log.info('Shutting down application...');
+            
+            // Close the browser session first
+            closeBrowserSession().then(() => {
+                log.success('Browser sessions closed, shutting down server');
+                
+                // Give a small delay to ensure response is sent
+                setTimeout(() => {
+                    process.exit(0); // Exit with success code
+                }, 500);
+            }).catch(error => {
+                log.error(`Error during shutdown: ${error.message}`);
+                // Exit anyway after error
+                setTimeout(() => {
+                    process.exit(1); // Exit with error code
+                }, 500);
+            });
+        });
+    });
+
     // Add API routes for accessing logs and stats
     app.get('/api/stats', async (req, res) => {
         log.info(`Dashboard requested stats data`);

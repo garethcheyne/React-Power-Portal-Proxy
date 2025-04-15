@@ -28,7 +28,6 @@
     "@eslint/eslintrc": "^3",
     "@shadcn/ui": "^0.0.4",
     "@tailwindcss/postcss": "^4",
-    "@types/dotenv": "^6.1.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

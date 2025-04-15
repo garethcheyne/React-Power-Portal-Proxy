@@ -71,6 +71,9 @@ export default function DashboardClient() {
   // Add state variable for portal URL
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
 
+  // Add state for shutdown status
+  const [isShuttingDown, setIsShuttingDown] = useState(false);
+
   // Fetch portal URL from our API endpoint
   useEffect(() => {
     async function fetchPortalUrl() {
@@ -97,6 +100,40 @@ export default function DashboardClient() {
   // Close the request inspector
   const handleCloseInspector = () => {
     setInspectorOpen(false);
+  };
+
+  // Function to trigger application shutdown
+  const handleShutdown = async () => {
+    if (window.confirm('Are you sure you want to shut down the entire application?')) {
+      setIsShuttingDown(true);
+      try {
+        const response = await fetch('/api/shutdown', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('Application shutdown initiated. The server will close in a few seconds.');
+          // Close the window after a short delay
+          setTimeout(() => {
+            window.close();
+            // Fallback if window.close() doesn't work (due to browser security)
+            document.body.innerHTML = '<h1 style="text-align: center; margin-top: 100px;">The application has been shut down. You can close this window.</h1>';
+          }, 1000);
+        } else {
+          alert('Failed to shut down the application: ' + (data.message || 'Unknown error'));
+          setIsShuttingDown(false);
+        }
+      } catch (error) {
+        console.error('Error shutting down application:', error);
+        alert('Error shutting down application. See console for details.');
+        setIsShuttingDown(false);
+      }
+    }
   };
 
   // Fetch summary data
@@ -306,6 +343,14 @@ export default function DashboardClient() {
           >
             Open Portal
           </Link>
+          <Button
+            variant="destructive"
+            onClick={handleShutdown}
+            disabled={isShuttingDown}
+            className="border-red-500 hover:bg-red-500/10"
+          >
+            {isShuttingDown ? 'Shutting Down...' : 'Shutdown'}
+          </Button>
         </div>
       </header>
 
