@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" ; exit 1",
-    "start": "npm run start-proxy",
-    "start-all": "concurrently \"npm:start-proxy\" \"npm:start-dashboard\"",
+    "start": "concurrently \"npm:start-proxy\" \"npm:start-dashboard\"",
     "start-with-dashboard": "concurrently \"npm:start-proxy\" \"npm:start-dashboard-open\"",
     "dev": "concurrently \"npm:dev-proxy\" \"npm:dev-dashboard\"",
     "start-proxy": "cd proxy && npm run start:browser",
