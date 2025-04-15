@@ -420,9 +420,7 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
     return (
         <Dialog open={isOpen} onOpenChange={() => onClose()}>
             <DialogContent
-                className="max-w-[80vw] max-h-[80vh] overflow-hidden flex flex-col"
-                style={{ width: '80vw' }}
-            >
+                className="min-h-[80vh] overflow-hidden flex flex-col">
                 <DialogHeader className="flex flex-row items-center justify-between">
                     <div>
                         <DialogTitle className="flex items-center gap-3">

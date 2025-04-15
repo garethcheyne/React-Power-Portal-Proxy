@@ -7,17 +7,12 @@ export async function GET() {
     try {
         // Try multiple possible paths for the .env file
         const possiblePaths = [
-            // Direct path from project root
-            path.resolve(process.cwd(), '.env'),
-            // Path from dashboard to project root
-            path.resolve(process.cwd(), '../../.env'),
-            // Absolute path based on current file location
-            path.resolve(__dirname, '../../../../../.env')
+            path.resolve(process.cwd(), '../.env'),
         ];
-        
+
         let envConfig = null;
         let envPath = null;
-        
+
         // Try each path until we find the .env file
         for (const p of possiblePaths) {
             if (fs.existsSync(p)) {
@@ -27,17 +22,17 @@ export async function GET() {
                 break;
             }
         }
-        
+
         // Hardcoded fallback if we can't find or parse the .env file
         if (!envConfig || !envConfig.POWERPORTAL_BASEURL) {
             console.log('Using hardcoded portal URL as fallback');
-            return NextResponse.json({ 
+            return NextResponse.json({
                 url: 'https://www.powerportal.example.com',
-                source: 'hardcoded' 
+                source: 'hardcoded'
             });
         }
-        
-        return NextResponse.json({ 
+
+        return NextResponse.json({
             url: envConfig.POWERPORTAL_BASEURL,
             source: 'env-file',
             path: envPath
@@ -45,7 +40,7 @@ export async function GET() {
     } catch (error) {
         console.error('Error fetching portal URL:', error);
         // Provide a hardcoded fallback on error
-        return NextResponse.json({ 
+        return NextResponse.json({
             url: 'https://www.powerportal.example.com',
             source: 'error-fallback'
         });

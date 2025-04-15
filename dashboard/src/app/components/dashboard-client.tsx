@@ -317,7 +317,7 @@ export default function DashboardClient() {
             src="/images/power-pages-logo.svg"
             alt="Power Pages Logo"
             width={60}
-            // height={40}
+            height={60}
             className="dark:invert-0"
           />
           <div>
@@ -346,7 +346,7 @@ export default function DashboardClient() {
           <Button
             variant="destructive"
             onClick={handleShutdown}
-            disabled={isShuttingDown}
+            // disabled={isShuttingDown}
             className="border-red-500 hover:bg-red-500/10"
           >
             {isShuttingDown ? 'Shutting Down...' : 'Shutdown'}
@@ -401,16 +401,16 @@ export default function DashboardClient() {
               </CardHeader>
               <CardContent className="h-80 overflow-auto">
                 {summary && Object.keys(summary.statusCodes || {}).length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-3 text-xs">
                     {Object.entries(summary.statusCodes || {}).map(([status, count]) => (
                       <div key={status} className="flex items-center">
-                        <div className="w-24">
-                          <Badge className={getStatusBadgeColor(parseInt(status))}>
+                        <div className="w-20">
+                          <Badge className={`${getStatusBadgeColor(parseInt(status))} text-xs px-1.5 py-px`}>
                             {status}
                           </Badge>
                         </div>
                         <div className="flex-1">
-                          <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                          <div className="h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                             <div
                               className={`h-full ${parseInt(status) < 400 ? 'bg-green-500' : 'bg-red-500'}`}
                               style={{
@@ -419,14 +419,14 @@ export default function DashboardClient() {
                             />
                           </div>
                         </div>
-                        <div className="w-16 text-right font-mono text-sm">
+                        <div className="w-14 text-right font-mono text-xs">
                           {count}
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center h-full text-neutral-500">
+                  <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
                     No status code data available yet
                   </div>
                 )}
@@ -577,7 +577,7 @@ export default function DashboardClient() {
                               {log.request.method}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                          <TableCell className="text-xs text-muted-foreground truncate max-w-[300px]">
                             {log.request.path}
                           </TableCell>
                           <TableCell>
@@ -585,8 +585,8 @@ export default function DashboardClient() {
                               {log.response.statusCode}
                             </Badge>
                           </TableCell>
-                          <TableCell>{formatDate(log.timestamp)}</TableCell>
-                          <TableCell className="text-right font-mono">
+                          <TableCell className="text-xs">{formatDate(log.timestamp)}</TableCell>
+                          <TableCell className="text-right text-xs">
                             {log.duration}ms
                           </TableCell>
                         </TableRow>
