@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link";
 import Image from "next/image";
 import { RequestInspectorDialog, RequestLogEntry } from './request-inspector-dialog';
+import { CopyIcon } from "lucide-react";
 
 type LogEntry = {
   id: string;
@@ -87,7 +89,7 @@ export default function DashboardClient() {
         console.error('Error fetching portal URL:', error);
       }
     }
-    
+
     fetchPortalUrl();
   }, []);
 
@@ -113,9 +115,9 @@ export default function DashboardClient() {
             'Content-Type': 'application/json'
           }
         });
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
           alert('Application shutdown initiated. The server will close in a few seconds.');
           // Close the window after a short delay
@@ -152,7 +154,10 @@ export default function DashboardClient() {
     try {
       const response = await fetch('/api/proxy-data?type=recent&limit=100');
       const data = await response.json();
-      setRecentLogs(data);
+      // Sort data with newest first
+      setRecentLogs(data.sort((a: LogEntry, b: LogEntry) =>
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      ));
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
@@ -354,337 +359,541 @@ export default function DashboardClient() {
         </div>
       </header>
 
-      <Tabs
-        defaultValue="overview"
-        className="space-y-4 flex-1 px-6 w-full max-w-none"
-        value={activeTab}
-        onValueChange={setActiveTab}
-      >
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="requests">Request Logs</TabsTrigger>
-          <TabsTrigger value="endpoints">Endpoints</TabsTrigger>
-        </TabsList>
+      {/* Portal URL Display */}
+      <div className="bg-primary/5 dark:bg-primary/10 px-6 py-3 border-b dark:border-neutral-800 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-primary">Portal URL:</span>
+          <span className="font-mono text-sm truncate max-w-[500px]">{portalUrl || "Loading..."}</span>
+        </div>
+        {portalUrl && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => {
+              navigator.clipboard.writeText(portalUrl);
+              alert('Portal URL copied to clipboard');
+            }}
+          >
+            <CopyIcon className="h-4 w-4 mr-1" /> Copy URL
+          </Button>
+        )}
+      </div>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <StatsCard
-              title="Total Requests"
-              value={summary?.totalRequests?.toString() || "0"}
-              description="Total API requests processed"
-            />
-            <StatsCard
-              title="Average Response Time"
-              value={avgResponseTime.toString()}
-              description="Average time to process requests"
-              unit="ms"
-            />
-            <StatsCard
-              title="Error Rate"
-              value={errorRate}
-              description="Percentage of requests with errors"
-              unit="%"
-            />
-            <StatsCard
-              title="Success Rate"
-              value={successRate}
-              description="Percentage of successful requests"
-              unit="%"
-            />
-          </div>
+      <div className="px-6 py-4">
+        <Tabs
+          defaultValue="overview"
+          className="space-y-4 flex-1 w-full max-w-none"
+          value={activeTab}
+          onValueChange={setActiveTab}
+        >
+          <TabsList>
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="requests">Request Logs</TabsTrigger>
+            <TabsTrigger value="endpoints">Endpoints</TabsTrigger>
+            <TabsTrigger value="documentation">Documentation</TabsTrigger>
+          </TabsList>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Status Code Distribution</CardTitle>
-                <CardDescription>Distribution of HTTP status codes</CardDescription>
-              </CardHeader>
-              <CardContent className="h-80 overflow-auto">
-                {summary && Object.keys(summary.statusCodes || {}).length > 0 ? (
-                  <div className="space-y-3 text-xs">
-                    {Object.entries(summary.statusCodes || {}).map(([status, count]) => (
-                      <div key={status} className="flex items-center">
-                        <div className="w-20">
-                          <Badge className={`${getStatusBadgeColor(parseInt(status))} text-xs px-1.5 py-px`}>
-                            {status}
-                          </Badge>
-                        </div>
-                        <div className="flex-1">
-                          <div className="h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full ${parseInt(status) < 400 ? 'bg-green-500' : 'bg-red-500'}`}
-                              style={{
-                                width: `${(count / summary.totalRequests) * 100}%`
-                              }}
-                            />
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <StatsCard
+                title="Total Requests"
+                value={summary?.totalRequests?.toString() || "0"}
+                description="Total API requests processed"
+              />
+              <StatsCard
+                title="Average Response Time"
+                value={avgResponseTime.toString()}
+                description="Average time to process requests"
+                unit="ms"
+              />
+              <StatsCard
+                title="Error Rate"
+                value={errorRate}
+                description="Percentage of requests with errors"
+                unit="%"
+              />
+              <StatsCard
+                title="Success Rate"
+                value={successRate}
+                description="Percentage of successful requests"
+                unit="%"
+              />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Status Code Distribution</CardTitle>
+                  <CardDescription>Distribution of HTTP status codes</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80 overflow-auto">
+                  {summary && Object.keys(summary.statusCodes || {}).length > 0 ? (
+                    <div className="space-y-3 text-xs">
+                      {Object.entries(summary.statusCodes || {}).map(([status, count]) => (
+                        <div key={status} className="flex items-center">
+                          <div className="w-20">
+                            <Badge className={`${getStatusBadgeColor(parseInt(status))} text-xs px-1.5 py-px`}>
+                              {status}
+                            </Badge>
+                          </div>
+                          <div className="flex-1">
+                            <div className="h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${parseInt(status) < 400 ? 'bg-green-500' : 'bg-red-500'}`}
+                                style={{
+                                  width: `${(count / summary.totalRequests) * 100}%`
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="w-14 text-right font-mono text-xs">
+                            {count}
                           </div>
                         </div>
-                        <div className="w-14 text-right font-mono text-xs">
-                          {count}
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
+                      No status code data available yet
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Last Activity</CardTitle>
+                  <CardDescription>Details about recent proxy activity</CardDescription>
+                </CardHeader>
+                <CardContent className="h-80 space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm font-medium text-neutral-500">Last Request</div>
+                      <div className="mt-1 text-lg font-medium">
+                        {summary?.lastRequest ? formatDate(summary.lastRequest) : 'Never'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-neutral-500">Active Since</div>
+                      <div className="mt-1 text-lg font-medium">
+                        {recentLogs.length > 0 ? formatDate(recentLogs[0]?.timestamp) : 'N/A'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-medium text-neutral-500 mb-2">Recent Activity</div>
+                    <div className="space-y-2">
+                      {recentLogs.slice(0, 5).map(log => (
+                        <div key={log.id} className="flex items-center gap-2 text-sm p-2 rounded bg-neutral-100 dark:bg-neutral-800">
+                          <Badge className={getMethodBadgeColor(log.request.method)}>
+                            {log.request.method}
+                          </Badge>
+                          <div className="flex-1 truncate">{log.request.path}</div>
+                          <Badge className={getStatusBadgeColor(log.response.statusCode)}>
+                            {log.response.statusCode}
+                          </Badge>
+                        </div>
+                      ))}
+                      {recentLogs.length === 0 && (
+                        <div className="text-neutral-500 text-center py-4">
+                          No activity recorded yet
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* New Long-Running Requests Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Slowest Endpoints</CardTitle>
+                <CardDescription>Endpoints with the longest average response times</CardDescription>
+              </CardHeader>
+              <CardContent className="h-96">
+                {summary && Object.entries(summary.endpoints || {}).length > 0 ? (
+                  <>
+                    <div className="pb-4 space-y-4">
+                      {Object.entries(summary.endpoints || {})
+                        // Sort by average response time (slowest first)
+                        .sort((a, b) => b[1].avgResponseTime - a[1].avgResponseTime)
+                        .slice(0, 7) // Take top 7 slowest endpoints
+                        .map(([key, data]) => {
+                          const [method, path] = key.split(':');
+                          const maxResponseTime = 2000; // Baseline for chart (2000ms)
+                          const responseTimePercentage = Math.min(100, (data.avgResponseTime / maxResponseTime) * 100);
+
+                          // Set color based on response time
+                          let barColor = 'bg-green-500';
+                          if (data.avgResponseTime > 1000) {
+                            barColor = 'bg-red-500';
+                          } else if (data.avgResponseTime > 500) {
+                            barColor = 'bg-yellow-500';
+                          } else if (data.avgResponseTime > 200) {
+                            barColor = 'bg-blue-500';
+                          }
+
+                          return (
+                            <div key={key} className="space-y-1">
+                              <div className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <Badge className={getMethodBadgeColor(method)}>
+                                    {method}
+                                  </Badge>
+                                  <span className="font-mono truncate max-w-[200px] md:max-w-[300px] text-xs">
+                                    {path}
+                                  </span>
+                                </div>
+                                <div className="font-mono font-semibold">
+                                  {Math.round(data.avgResponseTime)}ms
+                                </div>
+                              </div>
+                              <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full">
+                                <div
+                                  className={`h-full ${barColor} rounded-full`}
+                                  style={{ width: `${responseTimePercentage}%` }}
+                                />
+                              </div>
+                              <div className="flex justify-between text-xs text-neutral-500">
+                                <span>Calls: {data.count}</span>
+                                <span>Errors: {data.errors}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    <div className="mt-2 text-xs text-neutral-500 flex justify-between items-center">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>Good (&lt;200ms)</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span>Fair (200-500ms)</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                          <span>Slow (500-1000ms)</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                          <span>Very Slow (&gt;1000ms)</span>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  </>
                 ) : (
                   <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
-                    No status code data available yet
+                    No endpoint performance data available yet
                   </div>
                 )}
               </CardContent>
             </Card>
+
+            {/* Another useful chart - Request volume over time */}
             <Card>
               <CardHeader>
-                <CardTitle>Last Activity</CardTitle>
-                <CardDescription>Details about recent proxy activity</CardDescription>
+                <CardTitle>Performance Metrics</CardTitle>
+                <CardDescription>Additional performance insights for your API</CardDescription>
               </CardHeader>
-              <CardContent className="h-80 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm font-medium text-neutral-500">Last Request</div>
-                    <div className="mt-1 text-lg font-medium">
-                      {summary?.lastRequest ? formatDate(summary.lastRequest) : 'Never'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-neutral-500">Active Since</div>
-                    <div className="mt-1 text-lg font-medium">
-                      {recentLogs.length > 0 ? formatDate(recentLogs[0]?.timestamp) : 'N/A'}
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm font-medium text-neutral-500 mb-2">Recent Activity</div>
-                  <div className="space-y-2">
-                    {recentLogs.slice(0, 5).map(log => (
-                      <div key={log.id} className="flex items-center gap-2 text-sm p-2 rounded bg-neutral-100 dark:bg-neutral-800">
-                        <Badge className={getMethodBadgeColor(log.request.method)}>
-                          {log.request.method}
-                        </Badge>
-                        <div className="flex-1 truncate">{log.request.path}</div>
-                        <Badge className={getStatusBadgeColor(log.response.statusCode)}>
-                          {log.response.statusCode}
-                        </Badge>
-                      </div>
-                    ))}
-                    {recentLogs.length === 0 && (
-                      <div className="text-neutral-500 text-center py-4">
-                        No activity recorded yet
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="requests">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Request Logs</CardTitle>
-                <CardDescription>API requests processed by the proxy</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={handleRefresh} disabled={loading}>
-                  {loading ? 'Refreshing...' : 'Refresh'}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="mb-4 space-y-4">
-                <div className="flex flex-col md:flex-row gap-4">
-                  <div className="flex-1">
-                    <Input
-                      placeholder="Search paths or URLs..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full"
-                    />
-                  </div>
-                  <div className="flex gap-2 flex-wrap md:flex-nowrap">
-                    <Select value={methodFilter} onValueChange={setMethodFilter}>
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Methods</SelectItem>
-                        {uniqueMethods.map(method => (
-                          <SelectItem key={method} value={method.toLowerCase()}>
-                            {method}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="2xx">2xx</SelectItem>
-                        <SelectItem value="3xx">3xx</SelectItem>
-                        <SelectItem value="4xx">4xx</SelectItem>
-                        <SelectItem value="5xx">5xx</SelectItem>
-                        {uniqueStatusCodes.map(code => (
-                          <SelectItem key={code} value={code.toString()}>
-                            {code}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={timeRange} onValueChange={setTimeRange}>
-                      <SelectTrigger className="w-[120px]">
-                        <SelectValue placeholder="Time Range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1h">Last Hour</SelectItem>
-                        <SelectItem value="6h">Last 6 Hours</SelectItem>
-                        <SelectItem value="24h">Last 24 Hours</SelectItem>
-                        <SelectItem value="7d">Last 7 Days</SelectItem>
-                        <SelectItem value="all">All Time</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button variant="outline" onClick={resetFilters} className="md:ml-2">
-                      Reset
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">Method</TableHead>
-                      <TableHead>Path</TableHead>
-                      <TableHead className="w-[100px]">Status</TableHead>
-                      <TableHead className="w-[180px]">Time</TableHead>
-                      <TableHead className="text-right w-[100px]">Duration</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredLogs.length > 0 ? (
-                      filteredLogs.map((log) => (
-                        <TableRow
-                          key={log.id}
-                          className="cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                          onClick={() => handleRequestClick(log)}
-                        >
-                          <TableCell>
-                            <Badge className={getMethodBadgeColor(log.request.method)}>
-                              {log.request.method}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground truncate max-w-[300px]">
-                            {log.request.path}
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={getStatusBadgeColor(log.response.statusCode)}>
-                              {log.response.statusCode}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs">{formatDate(log.timestamp)}</TableCell>
-                          <TableCell className="text-right text-xs">
-                            {log.duration}ms
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center py-8 text-neutral-500">
-                          {loading ? 'Loading...' : (
-                            searchQuery || methodFilter !== 'all' || statusFilter !== 'all' || timeRange !== '24h'
-                              ? 'No matching requests found'
-                              : 'No requests recorded yet'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="mt-4 text-right text-sm text-neutral-500">
-                {filteredLogs.length} {filteredLogs.length === 1 ? 'request' : 'requests'} found
-                {filteredLogs.length !== recentLogs.length && ` (filtered from ${recentLogs.length})`}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="endpoints">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Endpoint Performance</CardTitle>
-                <CardDescription>Performance metrics for each API endpoint</CardDescription>
-              </div>
-              <Button variant="outline" onClick={handleRefresh} disabled={loading}>
-                {loading ? 'Refreshing...' : 'Refresh'}
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">Method</TableHead>
-                      <TableHead>Endpoint</TableHead>
-                      <TableHead className="text-right">Calls</TableHead>
-                      <TableHead className="text-right">Avg. Time</TableHead>
-                      <TableHead className="text-right">Error %</TableHead>
-                      <TableHead className="text-right">Last Called</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summary && Object.entries(summary.endpoints || {}).length > 0 ? (
-                      Object.entries(summary.endpoints || {}).map(([key, data]) => {
-                        const [method, path] = key.split(':');
-                        const errorRate = data.count > 0
-                          ? ((data.errors / data.count) * 100).toFixed(1)
-                          : '0';
-
-                        return (
-                          <TableRow key={key}>
-                            <TableCell>
+              <CardContent className="space-y-8">
+                {recentLogs.length > 0 ? (
+                  <>
+                    {/* Most Used Endpoints */}
+                    <div className="space-y-2">
+                      <div className="font-medium">Most Used Endpoints</div>
+                      {Object.entries(summary?.endpoints || {})
+                        .sort((a, b) => b[1].count - a[1].count)
+                        .slice(0, 5)
+                        .map(([key, data]) => {
+                          const [method, path] = key.split(':');
+                          return (
+                            <div key={key} className="flex items-center gap-2 text-sm p-2 rounded bg-neutral-100 dark:bg-neutral-800">
                               <Badge className={getMethodBadgeColor(method)}>
                                 {method}
                               </Badge>
+                              <div className="flex-1 truncate font-mono text-xs">{path}</div>
+                              <div className="text-right text-xs font-medium">{data.count} calls</div>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {/* Endpoints with Errors */}
+                    <div className="space-y-2">
+                      <div className="font-medium">Endpoints with Highest Error Rates</div>
+                      {Object.entries(summary?.endpoints || {})
+                        .filter(([_, data]) => data.errors > 0 && data.count >= 5) // Only consider endpoints with some traffic
+                        .sort((a, b) => (b[1].errors / b[1].count) - (a[1].errors / a[1].count))
+                        .slice(0, 5)
+                        .map(([key, data]) => {
+                          const [method, path] = key.split(':');
+                          const errorRate = ((data.errors / data.count) * 100).toFixed(1);
+                          return (
+                            <div key={key} className="flex items-center gap-2 text-sm p-2 rounded bg-neutral-100 dark:bg-neutral-800">
+                              <Badge className={getMethodBadgeColor(method)}>
+                                {method}
+                              </Badge>
+                              <div className="flex-1 truncate font-mono text-xs">{path}</div>
+                              <div className="text-right text-xs font-medium text-red-500">{errorRate}% errors</div>
+                            </div>
+                          );
+                        })}
+                      {!Object.entries(summary?.endpoints || {}).some(([_, data]) => data.errors > 0) && (
+                        <div className="text-sm text-center py-2 text-neutral-500">
+                          No endpoints with errors found
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-neutral-500 text-sm">
+                    Not enough data to display performance metrics
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="requests">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Request Logs</CardTitle>
+                  <CardDescription>API requests processed by the proxy</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+                    {loading ? 'Refreshing...' : 'Refresh'}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 space-y-4">
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1">
+                      <Input
+                        placeholder="Search paths or URLs..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="flex gap-2 flex-wrap md:flex-nowrap">
+                      <Select value={methodFilter} onValueChange={setMethodFilter}>
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue placeholder="Method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Methods</SelectItem>
+                          {uniqueMethods.map(method => (
+                            <SelectItem key={method} value={method.toLowerCase()}>
+                              {method}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={statusFilter} onValueChange={setStatusFilter}>
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="2xx">2xx</SelectItem>
+                          <SelectItem value="3xx">3xx</SelectItem>
+                          <SelectItem value="4xx">4xx</SelectItem>
+                          <SelectItem value="5xx">5xx</SelectItem>
+                          {uniqueStatusCodes.map(code => (
+                            <SelectItem key={code} value={code.toString()}>
+                              {code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select value={timeRange} onValueChange={setTimeRange}>
+                        <SelectTrigger className="w-[120px]">
+                          <SelectValue placeholder="Time Range" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1h">Last Hour</SelectItem>
+                          <SelectItem value="6h">Last 6 Hours</SelectItem>
+                          <SelectItem value="24h">Last 24 Hours</SelectItem>
+                          <SelectItem value="7d">Last 7 Days</SelectItem>
+                          <SelectItem value="all">All Time</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button variant="outline" onClick={resetFilters} className="md:ml-2">
+                        Reset
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-md border overflow-auto max-h-[65vh]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Method</TableHead>
+                        <TableHead>Path</TableHead>
+                        <TableHead className="w-[150px]">Query Params</TableHead>
+                        <TableHead className="w-[100px]">Status</TableHead>
+                        <TableHead className="w-[180px]">Time</TableHead>
+                        <TableHead className="text-right w-[100px]">Duration</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredLogs.length > 0 ? (
+                        filteredLogs.map((log) => (
+                          <TableRow
+                            key={log.id}
+                            className="cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            onClick={() => handleRequestClick(log)}
+                          >
+                            <TableCell>
+                              <Badge className={getMethodBadgeColor(log.request.method)}>
+                                {log.request.method}
+                              </Badge>
                             </TableCell>
-                            <TableCell className="font-mono text-sm truncate max-w-[300px]">
-                              {path}
+                            <TableCell className="text-xs text-muted-foreground truncate max-w-[300px]">
+                              {log.request.path}
                             </TableCell>
-                            <TableCell className="text-right">
-                              {data.count}
+                            <TableCell className="text-xs text-muted-foreground truncate max-w-[150px]">
+                              {Object.keys(log.request.query || {}).length > 0 ?
+                                Object.keys(log.request.query).map(key =>
+                                  `${key}=${log.request.query[key]}`
+                                ).join(', ')
+                                : '-'
+                              }
                             </TableCell>
-                            <TableCell className="text-right font-mono">
-                              {Math.round(data.avgResponseTime)}ms
+                            <TableCell>
+                              <Badge className={getStatusBadgeColor(log.response.statusCode)}>
+                                {log.response.statusCode}
+                              </Badge>
                             </TableCell>
-                            <TableCell className="text-right">
-                              {errorRate}%
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatDate(data.lastCall)}
+                            <TableCell className="text-xs">{formatDate(log.timestamp)}</TableCell>
+                            <TableCell className="text-right text-xs">
+                              {log.duration}ms
                             </TableCell>
                           </TableRow>
-                        );
-                      })
-                    ) : (
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-neutral-500">
+                            {loading ? 'Loading...' : (
+                              searchQuery || methodFilter !== 'all' || statusFilter !== 'all' || timeRange !== '24h'
+                                ? 'No matching requests found'
+                                : 'No requests recorded yet'
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="mt-4 text-right text-sm text-neutral-500">
+                  {filteredLogs.length} {filteredLogs.length === 1 ? 'request' : 'requests'} found
+                  {filteredLogs.length !== recentLogs.length && ` (filtered from ${recentLogs.length})`}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="endpoints">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Endpoint Performance</CardTitle>
+                  <CardDescription>Performance metrics for each API endpoint</CardDescription>
+                </div>
+                <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+                  {loading ? 'Refreshing...' : 'Refresh'}
+                </Button>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-md border overflow-auto max-h-[65vh]">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-neutral-500">
-                          {loading ? 'Loading...' : 'No endpoint data available yet'}
-                        </TableCell>
+                        <TableHead className="w-[100px]">Method</TableHead>
+                        <TableHead>Endpoint</TableHead>
+                        <TableHead className="text-right">Calls</TableHead>
+                        <TableHead className="text-right">Avg. Time</TableHead>
+                        <TableHead className="text-right">Error %</TableHead>
+                        <TableHead className="text-right">Last Called</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                    </TableHeader>
+                    <TableBody>
+                      {summary && Object.entries(summary.endpoints || {}).length > 0 ? (
+                        Object.entries(summary.endpoints || {})
+                          // Sort by lastCall timestamp (newest first)
+                          .sort((a, b) => {
+                            const dateA = new Date(a[1].lastCall).getTime();
+                            const dateB = new Date(b[1].lastCall).getTime();
+                            return dateB - dateA;
+                          })
+                          .map(([key, data]) => {
+                            const [method, path] = key.split(':');
+                            const errorRate = data.count > 0
+                              ? ((data.errors / data.count) * 100).toFixed(1)
+                              : '0';
+
+                            return (
+                              <TableRow key={key}>
+                                <TableCell>
+                                  <Badge className={getMethodBadgeColor(method)}>
+                                    {method}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="font-mono text-sm truncate max-w-[300px]">
+                                  {path}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {data.count}
+                                </TableCell>
+                                <TableCell className="text-right font-mono">
+                                  {Math.round(data.avgResponseTime)}ms
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {errorRate}%
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatDate(data.lastCall)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center py-8 text-neutral-500">
+                            {loading ? 'Loading...' : 'No endpoint data available yet'}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="documentation">
+            <Card>
+              <CardHeader>
+                <CardTitle>Using Liquid in Power Portals to Generate JSON</CardTitle>
+                <CardDescription>A guide to creating API-like endpoints in Power Pages portals using Liquid templates</CardDescription>
+              </CardHeader>
+              <CardContent className="prose dark:prose-invert max-w-none space-y-6 overflow-auto max-h-[75vh]">
+
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
 
       {/* Request inspector dialog */}
       <RequestInspectorDialog
@@ -706,8 +915,14 @@ export default function DashboardClient() {
             className="inline-block"
           />
         </div>
-        <div className="mt-1 text-xs">
-          with prompt assistance from Gareth Cheyne • <a href="https://www.err403.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">www.err403.com</a>
+        <div className="mt-1 text-xs flex items-center justify-center gap-2">
+          <span>with prompt assistance from Gareth Cheyne •</span>
+          <a href="https://www.err403.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-primary">www.err403.com</a>
+          <span>•</span>
+          <a href="https://github.com/garethcheyne/React-Power-Portal-Proxy" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 underline hover:text-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-github"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path><path d="M9 18c-4.51 2-5-2-7-2"></path></svg>
+            GitHub Repository
+          </a>
         </div>
       </footer>
     </main>
