@@ -270,97 +270,113 @@ async function authenticate(forceBrowser = false) {
     // No need to verify username - user will enter credentials in browser
     log.info('User will enter credentials directly in browser');
 
-    // Launch Edge browser instead of default Chromium
-    log.browser('Attempting to launch browser...');
-
+    // Launch browser - ensuring async operations complete before continuing
     try {
-        // Try to connect to an existing browser instance instead of launching a new one
-        log.browser('Attempting to connect to an existing browser...');
+        log.browser('Using system default browser for authentication...');
 
-        if (!activeBrowser) {
-            try {
-                // Try to connect to Edge first
-                activeBrowser = await chromium.connectOverCDP('http://localhost:9222');
-                log.success('Connected to existing browser instance');
-            } catch (connectError) {
-                log.warn(`Failed to connect to existing browser: ${connectError.message}`);
-                log.browser('Launching new browser instance in frameless PWA app mode...');
-
-                // If connection fails, launch a new browser instance in app mode (frameless PWA style)
-                try {
-                    activeBrowser = await chromium.launch({
-                        headless: false,
-                        channel: 'msedge', // Try Edge first
-                        args: [
-                            '--disable-extensions',
-                            '--app=about:blank', // Launch in app mode (frameless)
-                            '--start-maximized',
-                            '--remote-debugging-port=9222',
-                            '--window-size=1920,1080' // Set explicit window size
-                        ]
-                    });
-                    log.success('Successfully launched Microsoft Edge in PWA mode');
-                } catch (edgeError) {
-                    log.warn(`Failed to launch Microsoft Edge: ${edgeError.message}`);
-                    log.browser('Falling back to default Chromium browser in PWA mode');
-
-                    // Fall back to default Chromium browser
-                    activeBrowser = await chromium.launch({
-                        headless: false,
-                        args: [
-                            '--disable-extensions',
-                            '--app=about:blank', // Launch in app mode (frameless)
-                            '--start-maximized',
-                            '--remote-debugging-port=9222',
-                            '--window-size=1920,1080' // Set explicit window size
-                        ]
-                    });
-                    log.success('Successfully launched Chromium browser in PWA mode');
-                }
-            }
-        } else {
+        // Make sure we don't have a browser already
+        if (activeBrowser) {
             log.browser('Reusing existing browser session');
-        }
-    } catch (browserError) {
-        log.error(`Failed to launch any browser: ${browserError.message}`);
-        log.error('Please make sure you have either Microsoft Edge or Google Chrome installed');
-        throw new Error(`Browser launch failed: ${browserError.message}`);
-    }
-
-    try {
-        log.browser('Creating new browser context');
-        if (!activeContext) {
-            // Get the available screen size
-            const viewportSize = await activeBrowser.newPage().then(async tempPage => {
-                const screen = await tempPage.evaluate(() => {
-                    return {
-                        width: window.screen.availWidth,
-                        height: window.screen.availHeight
+        } else {
+            // Launch options for browser
+            const launchOptions = {
+                headless: false,
+                args: [
+                    '--start-maximized',
+                    '--disable-extensions',
+                ]
+            };
+            
+            // Launch a browser - synchronously wait for this to complete
+            if (process.platform === 'win32') {
+                // On Windows, try to detect the default browser
+                try {
+                    // Use a promise to handle the async exec call
+                    const detectDefaultBrowser = () => {
+                        return new Promise(resolve => {
+                            log.browser('Detecting default browser on Windows...');
+                            const { exec } = require('child_process');
+                            exec('reg query HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice /v ProgId', (err, stdout) => {
+                                let browserType = 'chromium'; // Default fallback
+                                let channelName = null;
+                                
+                                if (!err && stdout) {
+                                    const output = stdout.toString().toLowerCase();
+                                    if (output.includes('msedgehtml') || output.includes('edge')) {
+                                        browserType = 'chromium';
+                                        channelName = 'msedge';
+                                        log.browser('Detected Microsoft Edge as default browser');
+                                    } else if (output.includes('chrome')) {
+                                        browserType = 'chromium';
+                                        channelName = 'chrome';
+                                        log.browser('Detected Google Chrome as default browser');
+                                    } else if (output.includes('firefox')) {
+                                        browserType = 'firefox';
+                                        log.browser('Detected Firefox as default browser');
+                                    }
+                                }
+                                
+                                resolve({ browserType, channelName });
+                            });
+                        });
                     };
-                });
-                await tempPage.close();
-                return screen;
-            });
-
-            log.browser(`Setting viewport size to ${viewportSize.width}x${viewportSize.height}`);
-
-            // Create a context with the maximum viewport size
-            activeContext = await activeBrowser.newContext({
-                viewport: viewportSize,
-                ignoreHTTPSErrors: true
-            });
-
-            activePage = await activeContext.newPage();
-
-            // Attempt to maximize further using JavaScript
-            await activePage.evaluate(() => {
-                if (window.screen) {
-                    window.moveTo(0, 0);
-                    window.resizeTo(screen.availWidth, screen.availHeight);
+                    
+                    // Wait for browser detection
+                    const { browserType, channelName } = await detectDefaultBrowser();
+                    
+                    if (browserType === 'firefox') {
+                        const { firefox } = require('playwright');
+                        activeBrowser = await firefox.launch(launchOptions);
+                        log.success('Successfully launched Firefox');
+                    } else {
+                        // Chrome or Edge (both use chromium)
+                        if (channelName) {
+                            activeBrowser = await chromium.launch({
+                                ...launchOptions,
+                                channel: channelName
+                            });
+                            log.success(`Successfully launched ${channelName === 'msedge' ? 'Microsoft Edge' : 'Google Chrome'}`);
+                        } else {
+                            activeBrowser = await chromium.launch(launchOptions);
+                            log.success('Successfully launched Chromium');
+                        }
+                    }
+                } catch (browserDetectError) {
+                    log.warn(`Error detecting/launching browser: ${browserDetectError.message}`);
+                    log.browser('Falling back to default Chromium browser');
+                    activeBrowser = await chromium.launch(launchOptions);
+                    log.success('Successfully launched Chromium browser');
                 }
-            });
+            } else {
+                // For non-Windows platforms
+                activeBrowser = await chromium.launch(launchOptions);
+                log.success('Successfully launched Chromium browser');
+            }
+        }
+        
+        // Ensure browser is initialized before continuing
+        if (!activeBrowser) {
+            throw new Error('Failed to initialize browser');
         }
 
+        // Create browser context - now we know the browser is ready
+        log.browser('Creating new browser context');
+        activeContext = await activeBrowser.newContext({
+            viewport: null,  // Use full size viewport
+            ignoreHTTPSErrors: true  // Ignore SSL errors
+        });
+        
+        // Create a new page
+        activePage = await activeContext.newPage();
+        
+        // Make browser window use maximum screen space if possible
+        await activePage.evaluate(() => {
+            if (window.screen) {
+                window.moveTo(0, 0);
+                window.resizeTo(screen.availWidth, screen.availHeight);
+            }
+        });
+        
         // Construct the login URL
         const loginUrl = `${process.env.POWERPORTAL_BASEURL}${process.env.LOGIN_URL}?returnUrl=${encodeURIComponent(process.env.RETURN_URL)}&provider=${encodeURIComponent(process.env.AUTH_PROVIDER)}`;
         log.browser(`Navigating to login URL: ${chalk.underline(loginUrl)}`);
