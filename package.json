@@ -21,7 +21,7 @@
     "postinstall": "echo \"Installation complete! Run 'npm start' to start the proxy.\""
   },
   "keywords": [],
-  "author": "",
+  "author": "GitHub Copilot & Gareth Cheyne",
   "license": "ISC",
   "devDependencies": {
     "concurrently": "^8.2.2"
