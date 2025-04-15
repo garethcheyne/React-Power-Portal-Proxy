@@ -67,7 +67,7 @@ function saveSessionData(data) {
         log.info('Session persistence is disabled - not saving session data');
         return;
     }
-    
+
     try {
         // Only store what we need for session persistence
         const sessionData = {
@@ -76,7 +76,7 @@ function saveSessionData(data) {
             userData: data.userData,
             lastRefreshed: new Date().toISOString()
         };
-        
+
         fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(sessionData, null, 2));
         log.success('Session data saved to disk for persistence');
     } catch (error) {
@@ -94,17 +94,17 @@ function loadSessionData() {
         log.info('Session persistence is disabled - not loading previous session data');
         return null;
     }
-    
+
     try {
         if (fs.existsSync(SESSION_FILE_PATH)) {
             const data = JSON.parse(fs.readFileSync(SESSION_FILE_PATH, 'utf8'));
             log.info('Found saved session data');
-            
+
             // Check if session is recent enough (within last 12 hours)
             const lastRefreshed = new Date(data.lastRefreshed);
             const now = new Date();
             const hoursSinceRefresh = (now - lastRefreshed) / (1000 * 60 * 60);
-            
+
             if (hoursSinceRefresh < 12) {
                 log.success(`Using saved session data (${Math.round(hoursSinceRefresh * 10) / 10} hours old)`);
                 return data;
@@ -133,7 +133,7 @@ async function closeBrowserSession() {
         activeBrowser = null;
         activeContext = null;
         activePage = null;
-        
+
         log.success('Browser closed, but session data is preserved');
     }
 }
@@ -145,20 +145,20 @@ async function closeBrowserSession() {
  */
 async function callWhoamiAPI(cookies) {
     log.info(chalk.bold('Making direct API call to whoami endpoint...'));
-    
+
     try {
         // Convert playwright cookies to axios cookie format
         const cookieString = cookies
             .map(cookie => `${cookie.name}=${cookie.value}`)
             .join('; ');
-        
+
         // Create a custom https agent that ignores SSL certificate errors
         const httpsAgent = new https.Agent({
             rejectUnauthorized: false // Ignore SSL certificate issues
         });
-        
+
         log.warn('SSL certificate verification disabled for API calls');
-        
+
         // Make API request with cookies
         const response = await axios({
             method: 'get',
@@ -169,16 +169,16 @@ async function callWhoamiAPI(cookies) {
             },
             httpsAgent: httpsAgent // Use the custom agent that ignores certificate issues
         });
-        
+
         // Pretty print the response data
         log.success('API whoami call successful!');
         console.log('\n' + chalk.bgGreen.white.bold(' WHOAMI RESPONSE '));
         console.log(chalk.green('─'.repeat(50)));
-        
+
         const data = response.data;
         console.log(chalk.white(JSON.stringify(data, null, 2)));
         console.log(chalk.green('─'.repeat(50)) + '\n');
-        
+
         return data;
     } catch (error) {
         log.error(`API whoami call failed: ${error.message}`);
@@ -199,12 +199,12 @@ async function callWhoamiAPI(cookies) {
  */
 async function verifySession(sessionData) {
     log.info(chalk.bold('Verifying if existing session is still valid...'));
-    
+
     if (!sessionData || !sessionData.cookies || sessionData.cookies.length === 0) {
         log.warn('No session data to verify');
         return false;
     }
-    
+
     try {
         const userData = await callWhoamiAPI(sessionData.cookies);
         if (userData) {
@@ -221,7 +221,7 @@ async function verifySession(sessionData) {
     } catch (error) {
         log.error(`Session verification failed: ${error.message}`);
     }
-    
+
     log.warn('Session appears to be expired or invalid');
     return false;
 }
@@ -233,10 +233,10 @@ async function verifySession(sessionData) {
  */
 async function authenticate(forceBrowser = false) {
     log.info(chalk.bold('Starting authentication process...'));
-    
+
     // Always force browser if the flag is set
     forceBrowser = forceBrowser || shouldOpenBrowser;
-    
+
     // Try to use cached session if available (unless forced browser or persistence disabled)
     if (!forceBrowser && !shouldNotPersist) {
         // First check our in-memory cache
@@ -248,7 +248,7 @@ async function authenticate(forceBrowser = false) {
                 return persistentAuthData;
             }
         }
-        
+
         // If no valid in-memory cache, try loading from disk
         const savedSession = loadSessionData();
         if (savedSession) {
@@ -259,7 +259,7 @@ async function authenticate(forceBrowser = false) {
                 return persistentAuthData;
             }
         }
-        
+
         log.info('No valid session found, proceeding with browser authentication');
     } else if (shouldNotPersist) {
         log.info('Session persistence is disabled - proceeding with browser authentication');
@@ -269,31 +269,54 @@ async function authenticate(forceBrowser = false) {
 
     // No need to verify username - user will enter credentials in browser
     log.info('User will enter credentials directly in browser');
-    
+
     // Launch Edge browser instead of default Chromium
     log.browser('Attempting to launch browser...');
-    
+
     try {
-        // Try Microsoft Edge first
-        log.browser('Trying to launch Microsoft Edge');
+        // Try to connect to an existing browser instance instead of launching a new one
+        log.browser('Attempting to connect to an existing browser...');
+
         if (!activeBrowser) {
             try {
-                activeBrowser = await chromium.launch({ 
-                    headless: false, // Keep browser visible
-                    channel: 'msedge', // Explicitly use Edge
-                    args: ['--disable-extensions'] // Disable extensions which can cause issues
-                });
-                log.success('Successfully launched Microsoft Edge');
-            } catch (edgeError) {
-                log.warn(`Failed to launch Microsoft Edge: ${edgeError.message}`);
-                log.browser('Falling back to default Chromium browser');
-                
-                // Fall back to default Chromium browser
-                activeBrowser = await chromium.launch({
-                    headless: false,
-                    args: ['--disable-extensions']
-                });
-                log.success('Successfully launched Chromium browser');
+                // Try to connect to Edge first
+                activeBrowser = await chromium.connectOverCDP('http://localhost:9222');
+                log.success('Connected to existing browser instance');
+            } catch (connectError) {
+                log.warn(`Failed to connect to existing browser: ${connectError.message}`);
+                log.browser('Launching new browser instance in frameless PWA app mode...');
+
+                // If connection fails, launch a new browser instance in app mode (frameless PWA style)
+                try {
+                    activeBrowser = await chromium.launch({
+                        headless: false,
+                        channel: 'msedge', // Try Edge first
+                        args: [
+                            '--disable-extensions',
+                            '--app=about:blank', // Launch in app mode (frameless)
+                            '--start-maximized',
+                            '--remote-debugging-port=9222',
+                            '--window-size=1920,1080' // Set explicit window size
+                        ]
+                    });
+                    log.success('Successfully launched Microsoft Edge in PWA mode');
+                } catch (edgeError) {
+                    log.warn(`Failed to launch Microsoft Edge: ${edgeError.message}`);
+                    log.browser('Falling back to default Chromium browser in PWA mode');
+
+                    // Fall back to default Chromium browser
+                    activeBrowser = await chromium.launch({
+                        headless: false,
+                        args: [
+                            '--disable-extensions',
+                            '--app=about:blank', // Launch in app mode (frameless)
+                            '--start-maximized',
+                            '--remote-debugging-port=9222',
+                            '--window-size=1920,1080' // Set explicit window size
+                        ]
+                    });
+                    log.success('Successfully launched Chromium browser in PWA mode');
+                }
             }
         } else {
             log.browser('Reusing existing browser session');
@@ -307,8 +330,35 @@ async function authenticate(forceBrowser = false) {
     try {
         log.browser('Creating new browser context');
         if (!activeContext) {
-            activeContext = await activeBrowser.newContext();
+            // Get the available screen size
+            const viewportSize = await activeBrowser.newPage().then(async tempPage => {
+                const screen = await tempPage.evaluate(() => {
+                    return {
+                        width: window.screen.availWidth,
+                        height: window.screen.availHeight
+                    };
+                });
+                await tempPage.close();
+                return screen;
+            });
+
+            log.browser(`Setting viewport size to ${viewportSize.width}x${viewportSize.height}`);
+
+            // Create a context with the maximum viewport size
+            activeContext = await activeBrowser.newContext({
+                viewport: viewportSize,
+                ignoreHTTPSErrors: true
+            });
+
             activePage = await activeContext.newPage();
+
+            // Attempt to maximize further using JavaScript
+            await activePage.evaluate(() => {
+                if (window.screen) {
+                    window.moveTo(0, 0);
+                    window.resizeTo(screen.availWidth, screen.availHeight);
+                }
+            });
         }
 
         // Construct the login URL
@@ -440,7 +490,7 @@ async function authenticate(forceBrowser = false) {
             userData: whoamiData,
             lastRefreshed: new Date().toISOString()
         };
-        
+
         // Save session to disk
         saveSessionData(persistentAuthData);
 
@@ -450,7 +500,7 @@ async function authenticate(forceBrowser = false) {
         // Let user know they can close the browser
         log.instruction('Authentication complete - you can now access the dashboard');
         log.instruction('The session will stay active even after the browser is closed');
-        
+
         return {
             cookies,
             headers,
@@ -472,11 +522,11 @@ async function authenticate(forceBrowser = false) {
  * @param {Page} page - The Playwright page object 
  */
 async function injectSuccessModal(page) {
-  try {
-    await page.evaluate(() => {
-      // Create modal elements
-      const modalContainer = document.createElement('div');
-      modalContainer.style.cssText = `
+    try {
+        await page.evaluate(() => {
+            // Create modal elements
+            const modalContainer = document.createElement('div');
+            modalContainer.style.cssText = `
         position: fixed;
         top: 0;
         left: 0;
@@ -489,9 +539,9 @@ async function injectSuccessModal(page) {
         z-index: 9999;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       `;
-      
-      const modalContent = document.createElement('div');
-      modalContent.style.cssText = `
+
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = `
         background-color: white;
         border-radius: 8px;
         padding: 24px;
@@ -501,25 +551,25 @@ async function injectSuccessModal(page) {
         text-align: center;
       `;
 
-      const icon = document.createElement('div');
-      icon.innerHTML = `
+            const icon = document.createElement('div');
+            icon.innerHTML = `
         <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
           <polyline points="22 4 12 14.01 9 11.01"></polyline>
         </svg>
       `;
-      
-      const title = document.createElement('h2');
-      title.textContent = 'Authentication Successful!';
-      title.style.cssText = 'margin: 16px 0; color: #111827; font-size: 1.5rem;';
-      
-      const message = document.createElement('p');
-      message.textContent = 'You have successfully authenticated. You can now access the dashboard or close this browser window.';
-      message.style.cssText = 'margin: 0 0 24px 0; color: #4B5563; font-size: 1rem; line-height: 1.5;';
-      
-      const dashboardButton = document.createElement('button');
-      dashboardButton.textContent = 'Open Dashboard';
-      dashboardButton.style.cssText = `
+
+            const title = document.createElement('h2');
+            title.textContent = 'Authentication Successful!';
+            title.style.cssText = 'margin: 16px 0; color: #111827; font-size: 1.5rem;';
+
+            const message = document.createElement('p');
+            message.textContent = 'You have successfully authenticated. You can now access the dashboard or close this browser window.';
+            message.style.cssText = 'margin: 0 0 24px 0; color: #4B5563; font-size: 1rem; line-height: 1.5;';
+
+            const dashboardButton = document.createElement('button');
+            dashboardButton.textContent = 'Open Dashboard';
+            dashboardButton.style.cssText = `
         background-color: #10B981;
         color: white;
         border: none;
@@ -531,24 +581,24 @@ async function injectSuccessModal(page) {
         transition: background-color 0.2s;
         margin-right: 12px;
       `;
-      
-      dashboardButton.addEventListener('mouseover', () => {
-        dashboardButton.style.backgroundColor = '#059669';
-      });
-      
-      dashboardButton.addEventListener('mouseout', () => {
-        dashboardButton.style.backgroundColor = '#10B981';
-      });
-      
-      dashboardButton.addEventListener('click', () => {
-        window.open('http://localhost:5001', '_blank');
-        modalContainer.style.opacity = '0';
-        setTimeout(() => modalContainer.remove(), 300);
-      });
-      
-      const closeButton = document.createElement('button');
-      closeButton.textContent = 'Close';
-      closeButton.style.cssText = `
+
+            dashboardButton.addEventListener('mouseover', () => {
+                dashboardButton.style.backgroundColor = '#059669';
+            });
+
+            dashboardButton.addEventListener('mouseout', () => {
+                dashboardButton.style.backgroundColor = '#10B981';
+            });
+
+            dashboardButton.addEventListener('click', () => {
+                window.open('http://localhost:5001', '_blank');
+                modalContainer.style.opacity = '0';
+                setTimeout(() => modalContainer.remove(), 300);
+            });
+
+            const closeButton = document.createElement('button');
+            closeButton.textContent = 'Close';
+            closeButton.style.cssText = `
         background-color: transparent;
         color: #6B7280;
         border: 1px solid #D1D5DB;
@@ -559,50 +609,50 @@ async function injectSuccessModal(page) {
         cursor: pointer;
         transition: all 0.2s;
       `;
-      
-      closeButton.addEventListener('mouseover', () => {
-        closeButton.style.backgroundColor = '#F3F4F6';
-      });
-      
-      closeButton.addEventListener('mouseout', () => {
-        closeButton.style.backgroundColor = 'transparent';
-      });
-      
-      closeButton.addEventListener('click', () => {
-        modalContainer.style.opacity = '0';
-        setTimeout(() => modalContainer.remove(), 300);
-      });
-      
-      // Create button container for layout
-      const buttonContainer = document.createElement('div');
-      buttonContainer.style.cssText = `
+
+            closeButton.addEventListener('mouseover', () => {
+                closeButton.style.backgroundColor = '#F3F4F6';
+            });
+
+            closeButton.addEventListener('mouseout', () => {
+                closeButton.style.backgroundColor = 'transparent';
+            });
+
+            closeButton.addEventListener('click', () => {
+                modalContainer.style.opacity = '0';
+                setTimeout(() => modalContainer.remove(), 300);
+            });
+
+            // Create button container for layout
+            const buttonContainer = document.createElement('div');
+            buttonContainer.style.cssText = `
         display: flex;
         justify-content: center;
         gap: 12px;
       `;
-      
-      // Assemble modal
-      buttonContainer.appendChild(dashboardButton);
-      buttonContainer.appendChild(closeButton);
-      modalContent.appendChild(icon);
-      modalContent.appendChild(title);
-      modalContent.appendChild(message);
-      modalContent.appendChild(buttonContainer);
-      modalContainer.appendChild(modalContent);
-      
-      // Add modal to page
-      document.body.appendChild(modalContainer);
-      
-      // Add fade-in animation
-      modalContainer.style.opacity = '0';
-      setTimeout(() => { modalContainer.style.opacity = '1'; }, 10);
-      modalContainer.style.transition = 'opacity 0.3s ease';
-    });
-    
-    console.log('Success modal with dashboard link injected into page');
-  } catch (error) {
-    console.error('Failed to inject success modal:', error);
-  }
+
+            // Assemble modal
+            buttonContainer.appendChild(dashboardButton);
+            buttonContainer.appendChild(closeButton);
+            modalContent.appendChild(icon);
+            modalContent.appendChild(title);
+            modalContent.appendChild(message);
+            modalContent.appendChild(buttonContainer);
+            modalContainer.appendChild(modalContent);
+
+            // Add modal to page
+            document.body.appendChild(modalContainer);
+
+            // Add fade-in animation
+            modalContainer.style.opacity = '0';
+            setTimeout(() => { modalContainer.style.opacity = '1'; }, 10);
+            modalContainer.style.transition = 'opacity 0.3s ease';
+        });
+
+        console.log('Success modal with dashboard link injected into page');
+    } catch (error) {
+        console.error('Failed to inject success modal:', error);
+    }
 }
 
 // Add a function to refresh session if needed

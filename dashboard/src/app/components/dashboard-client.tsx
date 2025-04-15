@@ -273,8 +273,8 @@ export default function DashboardClient() {
   const uniqueStatusCodes = Array.from(new Set(recentLogs.map(log => log.response.statusCode)));
 
   return (
-    <main className="flex min-h-screen flex-col p-6 bg-neutral-50 dark:bg-neutral-900">
-      <header className="flex items-center justify-between mb-6 pb-4 border-b dark:border-neutral-800">
+    <main className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-900">
+      <header className="flex items-center justify-between p-6 pb-4 border-b dark:border-neutral-800">
         <div className="flex items-center gap-4">
           <Image
             src="/images/power-pages-logo.svg"
@@ -311,7 +311,7 @@ export default function DashboardClient() {
 
       <Tabs
         defaultValue="overview"
-        className="space-y-4 flex-1"
+        className="space-y-4 flex-1 px-6 w-full max-w-none"
         value={activeTab}
         onValueChange={setActiveTab}
       >
