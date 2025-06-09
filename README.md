@@ -183,7 +183,6 @@ npm run start-proxy
 
 # Run only the dashboard in production mode
 npm run start-dashboard
-```
 
 ## How it Works
 
