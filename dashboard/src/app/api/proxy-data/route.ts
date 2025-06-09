@@ -1,170 +1,190 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import fs from "fs";
 
 // Define types for our log data
-interface RequestLog {
+interface LogEntry {
+  id: string;
   timestamp: string;
   request: {
     method: string;
     path: string;
+    url: string;
+    headers: Record<string, string>;
+    body: any;
+    query: Record<string, string>;
   };
   response: {
     statusCode: number;
+    statusMessage: string;
+    contentType: string;
+    headers: Record<string, string>;
+    body: any;
+    duration: number;
   };
+  duration: number;
+  success: boolean;
 }
 
-interface SummaryData {
-  totalRequests: number;
-  // Use more specific types for index signature to avoid 'any'
-  [key: string]: number | string | boolean | object;
-}
+type RawLogData = {
+  id?: number;
+  timestamp?: string;
+  formatted_timestamp?: string;
+  method?: string;
+  url?: string;
+  path?: string;
+  request_headers?: string;
+  request_body?: string;
+  query_params?: string;
+  status_code?: number;
+  status_message?: string;
+  content_type?: string;
+  response_headers?: string;
+  response_body?: string;
+  duration?: number;
+};
 
-interface LogData {
-  error?: string;
-  summary?: SummaryData;
-  requests?: RequestLog[];
-  logs?: RequestLog[];
-}
-
-// Read data from the api-logs.json file created by the proxy server
-const getLogsData = () => {
+// Safe JSON parsing functions
+function safeParseJSON(str: string | null | undefined, defaultValue: any = null): any {
+  if (!str) return defaultValue;
   try {
-    // In the new directory structure, logs are stored in a common "logs" directory
-    // Try different relative paths to handle both standalone and combined modes
-    let filePath = path.join(process.cwd(), "..", "logs", "api-logs.json");
-    
-    // If file doesn't exist at the first path, try another path for dashboard standalone mode
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(process.cwd(), "..", "..", "logs", "api-logs.json");
+    return JSON.parse(str);
+  } catch {
+    console.warn('Failed to parse JSON:', str);
+    return defaultValue;
+  }
+}
+
+// Handle potential string that might be JSON or plain text
+function parseBody(body: string | null | undefined): any {
+  if (!body) return null;
+  try {
+    // First try to parse as JSON
+    return JSON.parse(body);
+  } catch {
+    // If it's not JSON, return as plain text
+    return body;
+  }
+}
+
+// Get data from the proxy server
+const getLogsData = async (): Promise<LogEntry[]> => {
+  try {
+    const proxyUrl = process.env.PROXY_URL || 'http://localhost:5000';
+    console.log('Fetching logs from:', `${proxyUrl}/power-portal-proxy/logs/recent?limit=1000`);
+
+    const response = await fetch(`${proxyUrl}/power-portal-proxy/logs/recent?limit=1000`, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch logs: ${response.statusText}`);
     }
-    
-    // Fallback to current directory in case running in a different setup
-    if (!fs.existsSync(filePath)) {
-      filePath = path.join(process.cwd(), "logs", "api-logs.json");
-    }
-    
-    if (!fs.existsSync(filePath)) {
-      console.error("Log file not found at paths:", filePath);
-      return { error: "Log file not found", logs: [], summary: { totalRequests: 0 } };
-    }
-    
-    const fileContent = fs.readFileSync(filePath, "utf8");
-    return JSON.parse(fileContent) as LogData;
+
+    const rawData = await response.json() as RawLogData[];
+
+    // Transform the data to match the expected format
+    const transformedData: LogEntry[] = rawData.map((log) => ({
+      id: log.id?.toString() || Math.random().toString(36).substr(2, 9),
+      timestamp: log.timestamp || log.formatted_timestamp || new Date().toISOString(),
+      request: {
+        method: log.method || 'UNKNOWN',
+        url: log.url || '',
+        path: log.path || '',
+        headers: safeParseJSON(log.request_headers, {}),
+        body: parseBody(log.request_body),
+        query: safeParseJSON(log.query_params, {})
+      },
+      response: {
+        statusCode: log.status_code || 500,
+        statusMessage: log.status_message || 'Unknown',
+        contentType: log.content_type || 'unknown',
+        headers: safeParseJSON(log.response_headers, {}),
+        body: parseBody(log.response_body),
+        duration: log.duration || 0
+      },
+      duration: log.duration || 0,
+      success: (log.status_code || 500) < 400
+    }));
+
+    return transformedData;
   } catch (error) {
-    console.error("Error reading logs:", error);
-    return { error: "Failed to read logs", logs: [], summary: { totalRequests: 0 } } as LogData;
+    console.error("Error fetching logs from proxy:", error);
+    return [];
   }
 };
 
 // API endpoint to get statistics
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type") || "summary";
-  
-  // In the combined server mode, we can directly proxy to the main API endpoints
-  // instead of reading from file when available
-  if (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.COMBINED_SERVER_MODE === "true") {
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
-    
-    try {
-      let apiUrl = "";
-      
-      switch (type) {
-        case "summary":
-          apiUrl = `${baseUrl}/api/stats`;
-          break;
-        case "recent":
-          const limit = searchParams.get("limit") || "10";
-          apiUrl = `${baseUrl}/api/logs/recent?limit=${limit}`;
-          break;
-        case "search":
-          const method = searchParams.get("method");
-          const path = searchParams.get("path");
-          const status = searchParams.get("status");
-          const from = searchParams.get("from");
-          const to = searchParams.get("to");
-          
-          apiUrl = `${baseUrl}/api/logs?`;
-          if (method) apiUrl += `&method=${method}`;
-          if (path) apiUrl += `&path=${path}`;
-          if (status) apiUrl += `&status=${status}`;
-          if (from) apiUrl += `&from=${from}`;
-          if (to) apiUrl += `&to=${to}`;
-          break;
-      }
-      
-      // In combined server mode, we can just call the API directly without external fetch
-      // If we're in the same process, just return the file data
-      if (!apiUrl || process.env.COMBINED_SERVER_MODE === "true") {
-        // Fall back to file-based data
-        const data = getLogsData();
-        return handleFileBasedData(type, searchParams, data);
-      }
-      
-      // For standalone mode with an API base URL, make external requests
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-      return NextResponse.json(data);
-    } catch (error) {
-      console.error("Error fetching from API:", error);
-      // Fall back to file-based approach on error
-      const data = getLogsData();
-      return handleFileBasedData(type, searchParams, data);
-    }
-  }
-  
-  // Default case: use file-based approach
-  const data = getLogsData();
-  return handleFileBasedData(type, searchParams, data);
-}
+  try {
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type") || "summary";
 
-// Helper function to handle file-based data
-function handleFileBasedData(type: string, searchParams: URLSearchParams, data: LogData) {
-  switch (type) {
-    case "summary":
-      return NextResponse.json(data.summary || {});
-    
-    case "recent":
-      const limit = parseInt(searchParams.get("limit") || "10");
-      const recentLogs = data.requests?.slice(-limit) || [];
-      return NextResponse.json(recentLogs);
-    
-    case "search":
-      const method = searchParams.get("method");
-      const path = searchParams.get("path");
-      const status = searchParams.get("status");
-      const from = searchParams.get("from");
-      const to = searchParams.get("to");
-      
-      let filteredLogs = [...(data.requests || [])];
-      
-      // Apply filters
-      if (method) {
-        filteredLogs = filteredLogs.filter(log => log.request.method === method);
+    // Get data from proxy
+    const data = await getLogsData();
+    console.log('Processing data for type:', type);
+
+    switch (type) {
+      case "summary": {
+        const summary = {
+          totalRequests: data.length,
+          statusCodes: data.reduce((acc: Record<string, number>, log: LogEntry) => {
+            const status = log.response.statusCode;
+            acc[status] = (acc[status] || 0) + 1;
+            return acc;
+          }, {}),
+          lastRequest: data.length > 0 ? data[0].timestamp : null
+        };
+        return NextResponse.json(summary);
       }
-      
-      if (path) {
-        filteredLogs = filteredLogs.filter(log => log.request.path.includes(path));
+
+      case "recent": {
+        const limit = parseInt(searchParams.get("limit") || "10");
+        return NextResponse.json(data.slice(0, limit));
       }
-      
-      if (status) {
-        filteredLogs = filteredLogs.filter(log => String(log.response.statusCode) === status);
+
+      case "search": {
+        const method = searchParams.get("method");
+        const path = searchParams.get("path");
+        const status = searchParams.get("status");
+        const from = searchParams.get("from");
+        const to = searchParams.get("to");
+
+        let filteredLogs = [...data];
+
+        if (method && method !== 'all') {
+          filteredLogs = filteredLogs.filter(log => log.request.method === method);
+        }
+
+        if (path) {
+          filteredLogs = filteredLogs.filter(log => log.request.path.includes(path));
+        }
+
+        if (status && status !== 'all') {
+          filteredLogs = filteredLogs.filter(log => String(log.response.statusCode) === status);
+        }
+
+        if (from) {
+          const fromDate = new Date(from);
+          filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= fromDate);
+        }
+
+        if (to) {
+          const toDate = new Date(to);
+          filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) <= toDate);
+        }
+
+        return NextResponse.json(filteredLogs);
       }
-      
-      if (from) {
-        const fromDate = new Date(from);
-        filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= fromDate);
-      }
-      
-      if (to) {
-        const toDate = new Date(to);
-        filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) <= toDate);
-      }
-      
-      return NextResponse.json(filteredLogs);
-      
-    default:
-      return NextResponse.json({ error: "Invalid type parameter" });
+
+      default:
+        return NextResponse.json({ error: "Invalid type parameter" }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Error processing proxy data request:', error);
+    return NextResponse.json(
+      { error: "Failed to process proxy data request" },
+      { status: 500 }
+    );
   }
 }

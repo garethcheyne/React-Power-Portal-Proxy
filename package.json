@@ -1,8 +1,7 @@
-{
-  "name": "react-power-portal-proxy",
+{  "name": "start",
   "version": "1.0.0",
   "description": "A lightweight proxy service for Microsoft Power Portal development that handles authentication using Playwright.",
-  "main": "index.js",
+  "main": "cli.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" ; exit 1",
     "start": "concurrently \"npm:start-proxy\" \"npm:start-dashboard\"",
@@ -28,5 +27,11 @@
   },
   "engines": {
     "node": ">=16.0.0"
+  },  "bin": {
+    "start": "./cli.js"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0"
   }
 }

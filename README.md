@@ -1,6 +1,6 @@
 # React Power Portal Proxy
 
-A lightweight proxy service for Microsoft Power Portal development that handles authentication using Playwright, with an integrated dashboard for monitoring and managing requests.
+A lightweight proxy service for Microsoft Power Portal development that handles authentication using Playwright, with an integrated dashboard for monitoring and managing requests. Now featuring an SQLite-based logging system and interactive menu for easier management.
 
 ## Project Structure
 
@@ -9,6 +9,8 @@ This project consists of two main components:
 1. **Proxy Service** - A Node.js proxy server that handles authentication and forwards requests
 2. **Dashboard** - A Next.js web interface for monitoring and inspecting API requests
 
+The project uses SQLite for logging and statistics, providing better performance and reliability than the previous JSON-based logging system.
+
 ## Features
 
 - Automatically handles authentication using Playwright
@@ -16,6 +18,31 @@ This project consists of two main components:
 - Maintains session cookies and forwards them to the target application
 - Interactive dashboard for monitoring API traffic
 - Request inspector to analyze request/response details
+
+## Security Notes
+
+⚠️ **Important Security Considerations:**
+
+1. **Environment Variables**:
+   - The `.env` file contains sensitive information and is NOT tracked in git
+   - Never commit real credentials or domain names
+   - Keep your `.env` file secure and restrict access to authorized users only
+
+2. **Authentication Data**:
+   - Session data and cookies are stored locally
+   - Clear stored sessions when no longer needed using the dashboard
+   - Never commit or share session files
+
+3. **API Traffic**:
+   - The proxy logs API traffic for debugging purposes
+   - Regularly purge logs containing sensitive information
+   - Use the dashboard's purge functionality to clear logs
+
+4. **Best Practices**:
+   - Use this tool only in development environments
+   - Do not expose the proxy or dashboard to public networks
+   - Regularly review and clean stored data
+   - Avoid sharing screenshots or logs that may contain sensitive URLs or tokens
 
 ## System Requirements
 
@@ -75,30 +102,80 @@ Note: Username and password are no longer required in the .env file. Users will 
 
 ## Usage
 
-Start both the proxy service and dashboard in production mode:
+The project now includes an interactive menu system that makes it easy to manage the proxy and dashboard. You can start it using any of these methods:
 
+```bash
+# Using Bash
+./start.sh
+
+# Using Command Prompt
+start.bat
+
+# Using PowerShell
+.\start.ps1
 ```
-npm start
-```
 
-For development:
+The menu provides the following options:
+1. Start Proxy
+2. Stop Proxy
+3. Start Dashboard (Dev Mode)
+4. Stop Dashboard
+5. Open Dashboard in Browser
+6. Start Both Components
+7. Stop Both Components
+8. Rebuild Dashboard
 
-```
-npm run dev
-```
+The dashboard will be available at http://localhost:5001, and the proxy server at http://localhost:5000.
 
-This will start:
-- The proxy server on http://localhost:5000
-- The dashboard on http://localhost:5001
-- A browser window will automatically open for both the authentication process and the dashboard
+## Recent Changes (Changelog)
 
-You can also run each component separately:
+### June 2025
+- Added interactive menu system for easier component management
+- Migrated from JSON file logging to SQLite database for better performance
+- Added cookie display in dashboard for easier Postman testing
+- Improved request inspector with syntax highlighting
+- Added support for XML and various content types in request inspector
 
-```
+### May 2025
+- Migrated logging system from JSON files to SQLite database
+  - Improved query performance
+  - Better handling of concurrent writes
+  - Automatic log rotation and cleanup
+- Enhanced dashboard features:
+  - Real-time request monitoring
+  - Detailed request/response inspection
+  - Support for various content types (JSON, XML, HTML, etc.)
+  - Syntax highlighting for response bodies
+- Added cookie management:
+  - Visible authentication cookies in dashboard
+  - Easy copy functionality for Postman testing
+  - Automatic cookie renewal
+
+## Development
+
+You can still run components separately if needed:
+
+```bash
 # Run only the proxy server in dev mode
 npm run dev-proxy
 
 # Run only the dashboard in dev mode
+npm run dev-dashboard
+```
+
+## Database Structure
+
+The proxy now uses SQLite for logging with two main tables:
+
+1. `api_logs` - Stores detailed request/response information
+   - Request headers and body
+   - Response status and content
+   - Timestamps and duration
+
+2. `api_stats` - Maintains running statistics
+   - Total requests
+   - Success/Error counts
+   - Average response times
 npm run dev-dashboard
 
 # Run only the proxy server in production mode

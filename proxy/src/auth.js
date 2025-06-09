@@ -24,6 +24,45 @@ let persistentAuthData = {
     lastRefreshed: null
 };
 
+// Function to save auth data
+function saveAuthData(data) {
+    try {
+        persistentAuthData = {
+            ...data,
+            lastRefreshed: new Date().toISOString()
+        };
+        
+        // Save to file
+        if (!shouldNotPersist) {
+            fs.writeFileSync(SESSION_FILE_PATH, JSON.stringify(persistentAuthData, null, 2));
+            log.success('Session data saved successfully');
+        }
+        
+        // Update the exported data
+        exports.persistentAuthData = persistentAuthData;
+        return true;
+    } catch (error) {
+        log.error(`Failed to save session data: ${error.message}`);
+        return false;
+    }
+}
+
+// Function to get current auth data
+function getAuthData() {
+    if (!persistentAuthData.cookies) {
+        const loadedData = loadSessionData();
+        if (loadedData) {
+            persistentAuthData = loadedData;
+        }
+    }
+    return persistentAuthData;
+}
+
+// Export functions and data
+exports.persistentAuthData = persistentAuthData;
+exports.saveAuthData = saveAuthData;
+exports.getAuthData = getAuthData;
+
 // Path for storing session data
 const SESSION_FILE_PATH = path.join(process.cwd(), '.session-data.json');
 
@@ -94,6 +133,16 @@ function loadSessionData() {
         log.info('Session persistence is disabled - not loading previous session data');
         return null;
     }
+    
+    // Update module-level persistentAuthData
+    const sessionData = tryLoadSessionData();
+    if (sessionData) {
+        updateAuthData(sessionData);
+    }
+    return sessionData;
+}
+
+function tryLoadSessionData() {
 
     try {
         if (fs.existsSync(SESSION_FILE_PATH)) {
@@ -147,10 +196,14 @@ async function callWhoamiAPI(cookies) {
     log.info(chalk.bold('Making direct API call to whoami endpoint...'));
 
     try {
-        // Convert playwright cookies to axios cookie format
-        const cookieString = cookies
-            .map(cookie => `${cookie.name}=${cookie.value}`)
-            .join('; ');
+        // Find only the .AspNet.ApplicationCookie
+        const aspNetCookie = cookies.find(cookie => cookie.name === '.AspNet.ApplicationCookie');
+        if (!aspNetCookie) {
+            throw new Error('.AspNet.ApplicationCookie not found');
+        }
+
+        // Create cookie string with just the .AspNet.ApplicationCookie
+        const cookieString = `${aspNetCookie.name}=${aspNetCookie.value}`;
 
         // Create a custom https agent that ignores SSL certificate errors
         const httpsAgent = new https.Agent({
@@ -159,7 +212,7 @@ async function callWhoamiAPI(cookies) {
 
         log.warn('SSL certificate verification disabled for API calls');
 
-        // Make API request with cookies
+        // Make API request with just the .AspNet.ApplicationCookie
         const response = await axios({
             method: 'get',
             url: `${process.env.POWERPORTAL_BASEURL}/api/v1/auth/whoami`,
@@ -167,19 +220,31 @@ async function callWhoamiAPI(cookies) {
                 Cookie: cookieString,
                 'Accept': 'application/json'
             },
-            httpsAgent: httpsAgent // Use the custom agent that ignores certificate issues
+            httpsAgent: httpsAgent
         });
 
-        // Pretty print the response data
+        // Print authentication data
         log.success('API whoami call successful!');
-        console.log('\n' + chalk.bgGreen.white.bold(' WHOAMI RESPONSE '));
-        console.log(chalk.green('─'.repeat(50)));
+        console.log('\n' + chalk.bgGreen.white.bold(' AUTHENTICATION DATA (SIMPLIFIED) '));
+        console.log(chalk.green('─'.repeat(100)));
 
-        const data = response.data;
-        console.log(chalk.white(JSON.stringify(data, null, 2)));
-        console.log(chalk.green('─'.repeat(50)) + '\n');
+        // Display API response data
+        console.log(chalk.cyan.bold('📡 API Response:'));
+        console.log(chalk.white(JSON.stringify(response.data, null, 2)));
 
-        return data;
+        // Display endpoint and cookie information
+        console.log(chalk.cyan.bold('\n🌐 Essential Information:'));
+        console.log(chalk.white(`URL: ${process.env.POWERPORTAL_BASEURL}/api/v1/auth/whoami`));
+        console.log(chalk.white(`Cookie: ${cookieString}`));
+
+        // Generate and display simplified cURL command
+        console.log(chalk.cyan.bold('\n🔄 cURL Command:'));
+        const curlCommand = `curl -X GET "${process.env.POWERPORTAL_BASEURL}/api/v1/auth/whoami" \\\n  -H "Cookie: ${cookieString}" \\\n  -H "Accept: application/json" \\\n  --insecure`;
+        console.log(chalk.white(curlCommand));
+
+        console.log(chalk.green('\n' + '─'.repeat(100)) + '\n');
+
+        return response.data;
     } catch (error) {
         log.error(`API whoami call failed: ${error.message}`);
         if (error.response) {
@@ -198,10 +263,8 @@ async function callWhoamiAPI(cookies) {
  * @returns {Promise<boolean>} - True if session is valid
  */
 async function verifySession(sessionData) {
-    log.info(chalk.bold('Verifying if existing session is still valid...'));
-
-    if (!sessionData || !sessionData.cookies || sessionData.cookies.length === 0) {
-        log.warn('No session data to verify');
+    log.info(chalk.bold('Verifying if existing session is still valid...')); if (!sessionData || !sessionData.cookies || !sessionData.cookies.find(cookie => cookie.name === '.AspNet.ApplicationCookie')) {
+        log.warn('No .AspNet.ApplicationCookie found in session data');
         return false;
     }
 
@@ -282,11 +345,11 @@ async function authenticate(forceBrowser = false) {
             const launchOptions = {
                 headless: false,
                 args: [
-                    '--start-maximized',
+                    '--window-size=800,600',
                     '--disable-extensions',
                 ]
             };
-            
+
             // Launch a browser - synchronously wait for this to complete
             if (process.platform === 'win32') {
                 // On Windows, try to detect the default browser
@@ -299,7 +362,7 @@ async function authenticate(forceBrowser = false) {
                             exec('reg query HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\http\\UserChoice /v ProgId', (err, stdout) => {
                                 let browserType = 'chromium'; // Default fallback
                                 let channelName = null;
-                                
+
                                 if (!err && stdout) {
                                     const output = stdout.toString().toLowerCase();
                                     if (output.includes('msedgehtml') || output.includes('edge')) {
@@ -315,15 +378,15 @@ async function authenticate(forceBrowser = false) {
                                         log.browser('Detected Firefox as default browser');
                                     }
                                 }
-                                
+
                                 resolve({ browserType, channelName });
                             });
                         });
                     };
-                    
+
                     // Wait for browser detection
                     const { browserType, channelName } = await detectDefaultBrowser();
-                    
+
                     if (browserType === 'firefox') {
                         const { firefox } = require('playwright');
                         activeBrowser = await firefox.launch(launchOptions);
@@ -353,30 +416,20 @@ async function authenticate(forceBrowser = false) {
                 log.success('Successfully launched Chromium browser');
             }
         }
-        
+
         // Ensure browser is initialized before continuing
         if (!activeBrowser) {
             throw new Error('Failed to initialize browser');
-        }
-
-        // Create browser context - now we know the browser is ready
+        }        // Create browser context - now we know the browser is ready
         log.browser('Creating new browser context');
         activeContext = await activeBrowser.newContext({
-            viewport: null,  // Use full size viewport
+            // viewport: { width: 600, height: 900 },  // Set fixed viewport size
             ignoreHTTPSErrors: true  // Ignore SSL errors
         });
-        
+
         // Create a new page
         activePage = await activeContext.newPage();
-        
-        // Make browser window use maximum screen space if possible
-        await activePage.evaluate(() => {
-            if (window.screen) {
-                window.moveTo(0, 0);
-                window.resizeTo(screen.availWidth, screen.availHeight);
-            }
-        });
-        
+
         // Construct the login URL
         const loginUrl = `${process.env.POWERPORTAL_BASEURL}${process.env.LOGIN_URL}?returnUrl=${encodeURIComponent(process.env.RETURN_URL)}&provider=${encodeURIComponent(process.env.AUTH_PROVIDER)}`;
         log.browser(`Navigating to login URL: ${chalk.underline(loginUrl)}`);
@@ -482,22 +535,27 @@ async function authenticate(forceBrowser = false) {
             }
         } catch (error) {
             log.warn(`Could not extract user information: ${error.message}`);
-        }
-
-        log.browser(chalk.green.bold('✓ Browser session will remain active'));
-
+        }        log.browser(chalk.green.bold('✓ Browser session will remain active'));
+        
         // Get cookies and headers for future requests
         const cookies = await activeContext.cookies();
-        log.auth('COOKIES', `Captured ${cookies.length} cookies from browser session`);
+        const aspNetCookie = cookies.find(cookie => cookie.name === '.AspNet.ApplicationCookie');
+        log.auth('COOKIE', `Captured .AspNet.ApplicationCookie for authentication`);
 
         const headers = {
             'User-Agent': await activePage.evaluate(() => navigator.userAgent),
             'Referer': process.env.POWERPORTAL_BASEURL
         };
-        log.auth('HEADERS', `Captured essential headers for proxy requests`);
-
-        // Make a direct API call to whoami using the cookies to verify API access
+        log.auth('HEADERS', `Captured essential headers for proxy requests`);        // Make a direct API call to whoami using the cookies to verify API access
         const whoamiData = await callWhoamiAPI(cookies);
+
+        // Save the authentication data with user data from whoami
+        saveAuthData({
+            cookies,
+            headers,
+            userData: whoamiData,
+            lastRefreshed: new Date().toISOString()
+        });
 
         // Store the session data for persistence
         persistentAuthData = {
@@ -705,5 +763,8 @@ module.exports = {
     closeBrowserSession,
     callWhoamiAPI,
     refreshSession,
-    verifySession
+    verifySession,
+    getAuthData,
+    saveAuthData,
+    persistentAuthData
 };

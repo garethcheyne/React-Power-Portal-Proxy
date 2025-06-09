@@ -8,7 +8,8 @@ const fs = require('fs');
 const path = require('path');
 // Add rate limiter import (requires: npm install express-rate-limit)
 const rateLimit = require('express-rate-limit');
-const { authenticate, callWhoamiAPI, closeBrowserSession, refreshSession } = require('./auth');
+const auth = require('./auth');
+const { authenticate, callWhoamiAPI, closeBrowserSession, refreshSession } = auth;
 const db = require('./db');
 
 // Delete session data file at startup
@@ -30,16 +31,16 @@ dotenv.config({ path: path.resolve(path.join(__dirname, '..', '..', '.env')) });
 function validateEnv() {
     const required = ['POWERPORTAL_BASEURL']; // Removed username requirement
     const missing = required.filter(key => !process.env[key]);
-    
+
     if (missing.length > 0) {
         console.error(`Error: Missing required environment variables: ${missing.join(', ')}`);
         console.error('Please create a .env file with these variables or set them in your environment.');
         process.exit(1);
     }
-    
+
     // Username and password are now optional - user will enter in browser
     console.log('User credentials will be entered directly in the browser.');
-    
+
     // Validate base URL format
     try {
         new URL(process.env.POWERPORTAL_BASEURL);
@@ -56,10 +57,10 @@ validateEnv();
     try {
         const { chromium } = require('playwright');
         console.log('Playwright dependency found. Checking for browser...');
-        
+
         try {
             // Just check if we can create a browser instance
-            const browserInstance = await chromium.launch({ 
+            const browserInstance = await chromium.launch({
                 headless: true,
                 timeout: 30000
             });
@@ -83,7 +84,7 @@ let globalAuthData = null;
 // Configure rate limiter
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 600, // Limit each IP to 600 requests per windowMs
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message: 'Too many requests from this IP, please try again later.',
@@ -99,25 +100,68 @@ const apiLimiter = rateLimit({
 // Setup logging
 const log = {
     info: (message) => {
-        console.log(`[INFO] ${new Date().toISOString()} - ${message}`);
+        // Skip logging dashboard-related info messages
+        if (!message.includes('Dashboard requested')) {
+            console.log(`ℹ️  [INFO] ${new Date().toISOString()} - ${message}`);
+        }
     },
     error: (message) => {
-        console.error(`[ERROR] ${new Date().toISOString()} - ${message}`);
+        console.error(`❌ [ERROR] ${new Date().toISOString()} - ${message}`);
     },
     warn: (message) => {
-        console.warn(`[WARN] ${new Date().toISOString()} - ${message}`);
+        console.warn(`⚠️  [WARN] ${new Date().toISOString()} - ${message}`);
     },
     debug: (message) => {
         if (process.env.DEBUG === 'true') {
-            console.debug(`[DEBUG] ${new Date().toISOString()} - ${message}`);
+            console.debug(`🔍 [DEBUG] ${new Date().toISOString()} - ${message}`);
         }
     },
     request: (req, message) => {
-        console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.path} - ${message}`);
+        // Skip logging dashboard and internal API requests
+        if (!req.path.startsWith('/dashboard') &&
+            !(req.path.startsWith('/power-portal-proxy/') && !req.path.startsWith('/api/v1/'))) {
+
+            // Format query parameters if they exist
+            const queryStr = Object.keys(req.query || {}).length > 0
+                ? `\n  📝 Query: ${JSON.stringify(req.query, null, 2).replace(/\n/g, '\n    ')}`
+                : '';
+
+            // Format request body if it exists
+            const bodyStr = req.body
+                ? `\n  📦 Body: ${JSON.stringify(req.body, null, 2).replace(/\n/g, '\n    ')}`
+                : '';
+
+            console.log(
+                `📨 [REQUEST] ${new Date().toISOString()}\n` +
+                `  🌐 ${req.method} ${req.path}${queryStr}${bodyStr}\n` +
+                `  📍 ${message}`
+            );
+        }
     },
     response: (req, res, message) => {
-        const statusColor = res.statusCode < 400 ? '\x1b[32m' : '\x1b[31m'; // Green for success, red for errors
-        console.log(`[RESPONSE] ${new Date().toISOString()} - ${req.method} ${req.path} - ${statusColor}${res.statusCode}\x1b[0m - ${message}`);
+        // Skip logging dashboard and internal API responses
+        if (!req.path.startsWith('/dashboard') &&
+            !(req.path.startsWith('/power-portal-proxy/') && !req.path.startsWith('/api/v1/'))) {
+
+            const statusIcon = res.statusCode < 400
+                ? '✅' // Success
+                : res.statusCode < 500
+                    ? '⚠️' // Client error
+                    : '❌'; // Server error
+
+            const statusColor = res.statusCode < 400
+                ? '\x1b[32m' // Green for success
+                : res.statusCode < 500
+                    ? '\x1b[33m' // Yellow for client error
+                    : '\x1b[31m'; // Red for server error
+
+            console.log(
+                `📩 [RESPONSE] ${new Date().toISOString()}\n` +
+                `  🌐 ${req.method} ${req.path}\n` +
+                `  ${statusIcon} Status: ${statusColor}${res.statusCode}\x1b[0m\n` +
+                `  ⏱️  ${message}`
+            );
+        }
     }
 };
 
@@ -144,13 +188,18 @@ function setupProxyApp(app) {
     app.use(express.json());
 
     // Apply rate limiting to API routes
-    app.use('/api/', apiLimiter);
+    app.use('/power-portal-proxy/', apiLimiter);
 
-    // Enable CORS for dashboard requests - allowing both the separate dashboard (if run standalone) and combined server
+    // Enable CORS for dashboard requests
     app.use(cors({
         origin: ['http://localhost:5001', 'http://localhost:3000'],
         credentials: true,
     }));
+
+    // Add token route
+    const tokenRouter = require('./routes/token');
+    app.use('/power-portal-proxy/auth-token', tokenRouter);
+    app.set('persistentAuthData', globalAuthData);
 
     // Add an endpoint to manually close the browser while keeping the session
     app.get('/proxy/close-browser', async (req, res) => {
@@ -187,18 +236,18 @@ function setupProxyApp(app) {
     });
 
     // Add a shutdown endpoint
-    app.post('/api/shutdown', (req, res) => {
+    app.post('/power-portal-proxy/shutdown', (req, res) => {
         log.info('Received shutdown request from dashboard');
         res.json({ success: true, message: 'Shutdown initiated' });
-        
+
         // Send response before shutting down
         res.on('finish', () => {
             log.info('Shutting down application...');
-            
+
             // Close the browser session first
             closeBrowserSession().then(() => {
                 log.success('Browser sessions closed, shutting down server');
-                
+
                 // Give a small delay to ensure response is sent
                 setTimeout(() => {
                     process.exit(0); // Exit with success code
@@ -214,7 +263,7 @@ function setupProxyApp(app) {
     });
 
     // Add API routes for accessing logs and stats
-    app.get('/api/stats', async (req, res) => {
+    app.get('/power-portal-proxy/stats', async (req, res) => {
         log.info(`Dashboard requested stats data`);
         try {
             const stats = db.getStats();
@@ -225,13 +274,11 @@ function setupProxyApp(app) {
         }
     });
 
-    app.get('/api/logs', async (req, res) => {
+    app.get('/power-portal-proxy/logs', async (req, res) => {
         const { method, path, status, from, to, limit } = req.query;
-        log.info(`Dashboard requested logs with filters: ${JSON.stringify({ method, path, status, from, to, limit })}`);
-
-        try {
+        log.info(`Dashboard requested logs with filters: ${JSON.stringify({ method, path, status, from, to, limit })}`); try {
             const filters = { method, path, status, from, to };
-            const logs = db.searchLogs(filters, parseInt(limit) || 100);
+            const logs = await db.searchLogs(filters, parseInt(limit) || 100);
             res.json(logs);
         } catch (error) {
             log.error(`Error searching logs: ${error.message}`);
@@ -239,12 +286,11 @@ function setupProxyApp(app) {
         }
     });
 
-    app.get('/api/logs/recent', async (req, res) => {
+    app.get('/power-portal-proxy/logs/recent', async (req, res) => {
         const limit = parseInt(req.query.limit) || 100;
         log.info(`Dashboard requested ${limit} recent logs`);
-        
         try {
-            const logs = db.getRecentLogs(limit);
+            const logs = await db.getRecentLogs(limit);
             res.json(logs);
         } catch (error) {
             log.error(`Error retrieving recent logs: ${error.message}`);
@@ -252,7 +298,7 @@ function setupProxyApp(app) {
         }
     });
 
-    app.post('/api/logs/clear', async (req, res) => {
+    app.post('/power-portal-proxy/logs/clear', async (req, res) => {
         log.info(`Dashboard requested to clear all logs`);
         try {
             db.clearLogs();
@@ -261,12 +307,17 @@ function setupProxyApp(app) {
             log.error(`Error clearing logs: ${error.message}`);
             res.status(500).json({ error: error.message });
         }
-    });
-
-    // Request logging middleware
+    });    // Request logging middleware
     app.use((req, res, next) => {
-        log.request(req, 'Request received');
+        // Skip logging for dashboard and internal API routes
+        if (req.path.startsWith('/dashboard') ||
+            (req.path.startsWith('/power-portal-proxy/') && !req.path.startsWith('/api/v1/'))) {
+            next();
+            return;
+        }
+
         const start = Date.now();
+        log.request(req, 'Request received');
         res.on('finish', () => {
             const duration = Date.now() - start;
             log.response(req, res, `Duration: ${duration}ms`);
@@ -326,12 +377,12 @@ function setupProxyApp(app) {
     app.use(['/', '/*'], (req, res, next) => {
         // Skip proxying for dashboard and internal API routes
         // But do proxy external API endpoints
-        if (req.path.startsWith('/dashboard') || 
-            (req.path.startsWith('/api/') && !req.path.startsWith('/api/v1/'))) {
+        if (req.path.startsWith('/dashboard') ||
+            (req.path.startsWith('/power-portal-proxy/') && !req.path.startsWith('/api/v1/'))) {
             next();
             return;
         }
-        
+
         log.info(`Proxying request to: ${process.env.POWERPORTAL_BASEURL}${req.path}`);
 
         return createProxyMiddleware({
@@ -351,7 +402,7 @@ function setupProxyApp(app) {
             },
             onProxyReq: (proxyReq, req, res) => {
                 req.startTime = Date.now();
-                
+
                 if (req.body) {
                     req.requestBody = req.body;
                 }
@@ -382,16 +433,16 @@ function setupProxyApp(app) {
             onProxyRes: (proxyRes, req, res) => {
                 const contentEncoding = proxyRes.headers['content-encoding'];
                 const contentType = proxyRes.headers['content-type'] || '';
-                
+
                 const processableContentTypes = ['application/json', 'text/', 'application/xml', 'application/javascript'];
                 const shouldProcessContent = processableContentTypes.some(type => contentType.includes(type));
-                
+
                 if (shouldProcessContent) {
                     let responseBody = Buffer.from([]);
                     let originalWrite = res.write;
                     let originalEnd = res.end;
-                    
-                    res.write = function(chunk) {
+
+                    res.write = function (chunk) {
                         if (Buffer.isBuffer(chunk)) {
                             responseBody = Buffer.concat([responseBody, chunk]);
                         } else {
@@ -399,8 +450,8 @@ function setupProxyApp(app) {
                         }
                         return originalWrite.apply(res, arguments);
                     };
-                    
-                    res.end = function(chunk) {
+
+                    res.end = function (chunk) {
                         if (chunk) {
                             if (Buffer.isBuffer(chunk)) {
                                 responseBody = Buffer.concat([responseBody, chunk]);
@@ -408,7 +459,7 @@ function setupProxyApp(app) {
                                 responseBody = Buffer.concat([responseBody, Buffer.from(chunk)]);
                             }
                         }
-                        
+
                         try {
                             let decodedBody;
                             if (contentEncoding === 'gzip') {
@@ -430,7 +481,7 @@ function setupProxyApp(app) {
                                 body: req.requestBody || null,
                                 query: req.query
                             };
-                            
+
                             const responseData = {
                                 statusCode: proxyRes.statusCode,
                                 statusMessage: proxyRes.statusMessage,
@@ -439,14 +490,14 @@ function setupProxyApp(app) {
                                 contentType,
                                 duration
                             };
-                            
+
                             setTimeout(() => {
                                 db.logApiRequest(requestData, responseData);
                             }, 0);
                         } catch (error) {
                             log.error(`Error processing response: ${error.message}`);
                         }
-                        
+
                         return originalEnd.apply(res, arguments);
                     };
                 } else {
@@ -459,7 +510,7 @@ function setupProxyApp(app) {
                         body: null,
                         query: req.query
                     };
-                    
+
                     const responseData = {
                         statusCode: proxyRes.statusCode,
                         statusMessage: proxyRes.statusMessage,
@@ -468,12 +519,12 @@ function setupProxyApp(app) {
                         contentType,
                         duration
                     };
-                    
+
                     setTimeout(() => {
                         db.logApiRequest(requestData, responseData);
                     }, 0);
                 }
-                
+
                 const cookies = proxyRes.headers['set-cookie'];
                 if (cookies && globalAuthData && globalAuthData.cookies) {
                     cookies.forEach(cookieStr => {
@@ -510,7 +561,7 @@ function setupProxyApp(app) {
             },
             onError: (err, req, res) => {
                 const duration = Date.now() - (req.startTime || Date.now());
-                
+
                 const requestData = {
                     method: req.method,
                     url: req.url,
@@ -519,7 +570,7 @@ function setupProxyApp(app) {
                     body: req.requestBody || null,
                     query: req.query
                 };
-                
+
                 const responseData = {
                     statusCode: 500,
                     statusMessage: 'Proxy Error',
@@ -528,11 +579,11 @@ function setupProxyApp(app) {
                     contentType: 'text/plain',
                     duration
                 };
-                
+
                 setTimeout(() => {
                     db.logApiRequest(requestData, responseData);
                 }, 0);
-                
+
                 log.error(`Proxy error: ${err.message}`);
                 res.status(500).send('Proxy error occurred');
             }
@@ -556,7 +607,7 @@ function setupProxyApp(app) {
 }
 
 // Export the setupProxyApp function so it can be imported in server.js
-module.exports = { 
+module.exports = {
     setupProxyApp,
     log
 };
@@ -565,10 +616,10 @@ module.exports = {
 if (require.main === module) {
     const express = require('express');
     const app = express();
-    
+
     // Configure the proxy application
     setupProxyApp(app);
-    
+
     // Start the server
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () => {

@@ -144,8 +144,8 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
     // Helper function to check if content is XML
     const isXMLContent = (content: string): boolean => {
         return (
-            (content.trim().startsWith('<?xml') || content.trim().startsWith('<')) && 
-            content.includes('</') && 
+            (content.trim().startsWith('<?xml') || content.trim().startsWith('<')) &&
+            content.includes('</') &&
             !content.includes('<!DOCTYPE html>')
         );
     };
@@ -176,7 +176,7 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
     // Detect content type and apply styles
     const getContentTypeStyles = (contentType: string | undefined) => {
         if (!contentType) return 'language-text';
-        
+
         if (contentType.includes('application/json')) {
             return 'language-json';
         } else if (contentType.includes('application/xml') || contentType.includes('text/xml')) {
@@ -199,15 +199,15 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
         // Handle string content
         if (typeof content === 'string') {
             // Check for JSON
-            if (contentType?.includes('application/json') || 
+            if (contentType?.includes('application/json') ||
                 (content.trim().startsWith('{') && content.trim().endsWith('}')) ||
                 (content.trim().startsWith('[') && content.trim().endsWith(']'))) {
                 try {
                     const parsed = JSON.parse(content);
                     return (
                         <pre className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-md overflow-auto text-sm font-mono">
-                            <code 
-                                dangerouslySetInnerHTML={{ 
+                            <code
+                                dangerouslySetInnerHTML={{
                                     __html: JSON.stringify(parsed, null, 2)
                                         .replace(/&/g, '&amp;')
                                         .replace(/</g, '&lt;')
@@ -235,13 +235,13 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
                     );
                 }
             }
-            
+
             // Check for XML
             else if (contentType?.includes('xml') || isXMLContent(content)) {
                 const formattedXML = formatXML(content);
                 return (
                     <pre className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-md overflow-auto text-sm font-mono">
-                        <code dangerouslySetInnerHTML={{ 
+                        <code dangerouslySetInnerHTML={{
                             __html: formattedXML
                                 .replace(/&/g, '&amp;')
                                 .replace(/</g, '&lt;')
@@ -252,7 +252,7 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
                     </pre>
                 );
             }
-            
+
             // HTML content
             else if (contentType?.includes('text/html')) {
                 return (
@@ -261,7 +261,7 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
                             <div dangerouslySetInnerHTML={{ __html: content }} />
                         </div>
                         <pre className="mt-2 font-mono">
-                            <code dangerouslySetInnerHTML={{ 
+                            <code dangerouslySetInnerHTML={{
                                 __html: content
                                     .replace(/&/g, '&amp;')
                                     .replace(/</g, '&lt;')
@@ -273,12 +273,12 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
                     </div>
                 );
             }
-            
+
             // CSS content
             else if (contentType?.includes('text/css')) {
                 return (
                     <pre className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-md overflow-auto text-sm font-mono">
-                        <code dangerouslySetInnerHTML={{ 
+                        <code dangerouslySetInnerHTML={{
                             __html: content
                                 .replace(/&/g, '&amp;')
                                 .replace(/</g, '&lt;')
@@ -289,7 +289,7 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
                     </pre>
                 );
             }
-            
+
             // JavaScript content
             else if (contentType?.includes('javascript')) {
                 return (
@@ -298,7 +298,7 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
                     </pre>
                 );
             }
-            
+
             // Plain text or other content types
             else {
                 return (
@@ -314,8 +314,8 @@ export function RequestInspectorDialog({ isOpen, onClose, requestData }: Request
             try {
                 return (
                     <pre className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-md overflow-auto text-sm font-mono">
-                        <code 
-                            dangerouslySetInnerHTML={{ 
+                        <code
+                            dangerouslySetInnerHTML={{
                                 __html: JSON.stringify(content, null, 2)
                                     .replace(/&/g, '&amp;')
                                     .replace(/</g, '&lt;')

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 'use client';
 
+import { RefreshCcw as RefreshCcwIcon, Copy as CopyIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link";
 import Image from "next/image";
 import { RequestInspectorDialog, RequestLogEntry } from './request-inspector-dialog';
-import { CopyIcon } from "lucide-react";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -57,13 +57,12 @@ type SummaryData = {
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState('overview');
-
-  
-    const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
   const [recentLogs, setRecentLogs] = useState<LogEntry[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshInterval] = useState(10000); // 10 seconds
+  const [isPurging, setIsPurging] = useState(false);
 
   // Request inspector state
   const [selectedRequest, setSelectedRequest] = useState<RequestLogEntry | null>(null);
@@ -83,6 +82,20 @@ export default function DashboardClient() {
 
   // Add state for documentation content
   const [documentationContent, setDocumentationContent] = useState<string>('');
+
+  // Add state for auth token
+  const [authToken, setAuthToken] = useState<{
+    cookie: {
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      expires: number;
+      httpOnly: boolean;
+      secure: boolean;
+    };
+    curlCommand: string;
+  } | null>(null);
 
   // Fetch portal URL from our API endpoint
   useEffect(() => {
@@ -115,6 +128,20 @@ export default function DashboardClient() {
 
     fetchDocumentationContent();
   }, []);
+
+  // Fetch auth token
+  const fetchAuthToken = async () => {
+    try {
+      const response = await fetch('/api/auth-token');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch auth token: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setAuthToken(data);
+    } catch (error) {
+      console.error('Error fetching auth token:', error);
+    }
+  };
 
   // Open the request inspector when clicking a request
   const handleRequestClick = (request: LogEntry) => {
@@ -161,11 +188,44 @@ export default function DashboardClient() {
     }
   };
 
+  // Function to purge logs
+  const handlePurgeLogs = async () => {
+    if (window.confirm('Are you sure you want to purge all logs? This action cannot be undone.')) {
+      setIsPurging(true);
+      try {
+        const response = await fetch('/api/purge-logs', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          alert('Logs purged successfully');
+          // Refresh the data
+          handleRefresh();
+        } else {
+          alert('Failed to purge logs: ' + (data.message || 'Unknown error'));
+        }
+      } catch (error) {
+        console.error('Error purging logs:', error);
+        alert('Error purging logs. See console for details.');
+      } finally {
+        setIsPurging(false);
+      }
+    }
+  };
+
   // Fetch summary data
   const fetchSummary = async () => {
     try {
       const response = await fetch('/api/proxy-data?type=summary');
       const data = await response.json();
+      console.log('Summary data:', data); // Debug log for entire summary
+      console.log('Total requests:', data.totalRequests); // Debug log for total requests
+      console.log('Errors:', data.errors); // Debug log for errors
       setSummary(data);
     } catch (error) {
       console.error('Error fetching summary:', error);
@@ -285,13 +345,28 @@ export default function DashboardClient() {
   };
 
   // Calculate derived stats
-  const errorRate = summary && summary.totalRequests > 0
-    ? ((summary.errors / summary.totalRequests) * 100).toFixed(1)
-    : '0';
+  const calculateErrorRate = (summary: any): string => {
+    if (!summary || !summary.totalRequests || summary.totalRequests === 0) {
+      return '0.0';
+    }
 
-  const successRate = summary && summary.totalRequests > 0
-    ? (100 - parseFloat(errorRate)).toFixed(1)
-    : '100';
+    const totalErrors = (summary.errors || []).length;
+    const rate = (totalErrors / summary.totalRequests) * 100;
+    return isNaN(rate) ? '0.0' : rate.toFixed(1);
+  };
+
+  const calculateSuccessRate = (summary: any): string => {
+    if (!summary || !summary.totalRequests || summary.totalRequests === 0) {
+      return '100.0';
+    }
+
+    const totalErrors = (summary.errors || []).length;
+    const rate = ((summary.totalRequests - totalErrors) / summary.totalRequests) * 100;
+    return isNaN(rate) ? '100.0' : rate.toFixed(1);
+  };
+
+  const errorRate = calculateErrorRate(summary);
+  const successRate = calculateSuccessRate(summary);
 
   const avgResponseTime = summary?.responseTimeAvg
     ? Math.round(summary.responseTimeAvg)
@@ -337,6 +412,13 @@ export default function DashboardClient() {
   // Extract unique status codes for filter
   const uniqueStatusCodes = Array.from(new Set(recentLogs.map(log => log.response.statusCode)));
 
+  // Fetch auth token when auth tab is selected
+  useEffect(() => {
+    if (activeTab === 'auth') {
+      fetchAuthToken();
+    }
+  }, [activeTab]);
+
   return (
     <main className="flex min-h-screen flex-col bg-neutral-50 dark:bg-neutral-900 overflow-auto">
       <header className="flex items-center justify-between p-6 pb-4 border-b dark:border-neutral-800">
@@ -373,8 +455,16 @@ export default function DashboardClient() {
           </Link>
           <Button
             variant="destructive"
+            onClick={handlePurgeLogs}
+            disabled={isPurging}
+            className="border-yellow-500 hover:bg-yellow-500/10"
+          >
+            {isPurging ? 'Purging...' : 'Purge Logs'}
+          </Button>
+          <Button
+            variant="destructive"
             onClick={handleShutdown}
-            // disabled={isShuttingDown}
+            disabled={isShuttingDown}
             className="border-red-500 hover:bg-red-500/10"
           >
             {isShuttingDown ? 'Shutting Down...' : 'Shutdown'}
@@ -382,7 +472,7 @@ export default function DashboardClient() {
         </div>
       </header>
 
-      {/* Portal URL Display */}
+      {/* Move Portal URL Display above tabs */}
       <div className="bg-primary/5 dark:bg-primary/10 px-6 py-3 border-b dark:border-neutral-800 flex justify-between items-center">
         <div className="flex items-center gap-2">
           <span className="font-medium text-primary">Portal URL:</span>
@@ -414,6 +504,7 @@ export default function DashboardClient() {
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="requests">Request Logs</TabsTrigger>
             <TabsTrigger value="endpoints">Endpoints</TabsTrigger>
+            <TabsTrigger value="auth">Auth Token</TabsTrigger>
             <TabsTrigger value="documentation">Documentation</TabsTrigger>
           </TabsList>
 
@@ -899,6 +990,111 @@ export default function DashboardClient() {
                       )}
                     </TableBody>
                   </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="auth">
+            <Card>
+              <CardHeader>
+                <CardTitle>Authentication Token</CardTitle>
+                <CardDescription>Current session authentication token and usage examples</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchAuthToken}
+                    >
+                      <RefreshCcwIcon className="h-4 w-4 mr-2" /> Refresh Token
+                    </Button>
+                  </div>
+                  {authToken ? (
+                    <div className="space-y-6">
+                      <div>
+                        <div className="text-sm font-medium mb-2">Cookie</div>
+                        <div className="font-mono text-sm bg-neutral-100 dark:bg-neutral-800 p-3 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="truncate flex-1">{authToken.cookie.name}={authToken.cookie.value}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs ml-2"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`${authToken.cookie.name}=${authToken.cookie.value}`);
+                                alert('Cookie copied to clipboard');
+                              }}
+                            >
+                              <CopyIcon className="h-4 w-4 mr-1" /> Copy Cookie
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="text-sm font-medium mb-2">cURL Command</div>
+                        <div className="font-mono text-sm bg-neutral-100 dark:bg-neutral-800 p-3 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="truncate flex-1">{authToken.curlCommand}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs ml-2"
+                              onClick={() => {
+                                navigator.clipboard.writeText(authToken.curlCommand);
+                                alert('cURL command copied to clipboard');
+                              }}
+                            >
+                              <CopyIcon className="h-4 w-4 mr-1" /> Copy cURL
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <Card>
+                          <CardHeader className="py-4">
+                            <CardTitle className="text-sm">Cookie Details</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <dl className="grid grid-cols-2 gap-2 text-sm">
+                              <dt className="font-medium text-neutral-500">Domain:</dt>
+                              <dd className="font-mono">{authToken.cookie.domain}</dd>
+                              <dt className="font-medium text-neutral-500">Path:</dt>
+                              <dd className="font-mono">{authToken.cookie.path}</dd>
+                              <dt className="font-medium text-neutral-500">Expires:</dt>
+                              <dd>{authToken.cookie.expires ? new Date(authToken.cookie.expires * 1000).toLocaleString() : 'Session'}</dd>
+                              <dt className="font-medium text-neutral-500">Secure:</dt>
+                              <dd>{authToken.cookie.secure ? 'Yes' : 'No'}</dd>
+                              <dt className="font-medium text-neutral-500">HTTP Only:</dt>
+                              <dd>{authToken.cookie.httpOnly ? 'Yes' : 'No'}</dd>
+                            </dl>
+                          </CardContent>
+                        </Card>
+
+                        <Card>
+                          <CardHeader className="py-4">
+                            <CardTitle className="text-sm">Usage Instructions</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-sm space-y-2">
+                            <p>To authenticate your requests:</p>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Copy the cookie value above</li>
+                              <li>Add it to your request headers</li>
+                              <li>Use the cURL command for testing</li>
+                            </ol>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-32 text-neutral-500">
+                      Loading authentication token...
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

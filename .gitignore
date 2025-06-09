@@ -6,6 +6,7 @@
 .env.test.local
 .env.production.local
 logs/api-logs.json
+logs/api-logs.db
 
 # Dependencies
 node_modules/
